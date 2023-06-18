@@ -1,4 +1,3 @@
-
 use eframe::egui;
 
 pub fn custom_fonts(ctx: &egui::Context) {
