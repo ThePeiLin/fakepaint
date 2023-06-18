@@ -107,64 +107,58 @@ impl FakePaint {
     }
 
     fn draw_canvas(&mut self, ui: &mut egui::Ui) {
-        use image_button::ImageButton;
         egui::Grid::new("canvas-cells")
             .spacing(egui::Vec2::ZERO)
-            .striped(true)
             .num_columns(16)
             .min_col_width(16.0)
             .min_row_height(16.0)
             .show(ui, |ui| {
                 let canvas_cells = &mut self.canvas_cells;
                 let mut idx = 0;
-                for _ in 0..self.canvas_size_y {
-                    for _ in 0..self.canvas_size_x {
+                for i in 0..self.canvas_size_y {
+                    for j in 0..self.canvas_size_x {
                         let cell = &mut canvas_cells[idx];
-                        match cell {
-                            Some(c) => {
+                        let (rect, res) = ui.allocate_exact_size(
+                            egui::Vec2::splat(16.0),
+                            egui::Sense::click_and_drag(),
+                        );
+
+                        if ui.is_rect_visible(rect) {
+                            if res.hovered() {
+                                ui.painter().rect_filled(rect, egui::Rounding::none(), self.pencil_state.bc);
+                                self.tile
+                                    .to_image(self.pencil_state.idx, egui::Vec2::splat(16.0))
+                                    .tint(self.pencil_state.fc)
+                                    .paint_at(ui, rect);
+                            } else if let Some(c) = cell {
                                 let idx = c.idx;
                                 let bc = c.bc;
                                 let fc = c.fc;
-                                if ui
-                                    .add(
-                                        ImageButton::new(
-                                            Some(self.tile.tex.id()),
-                                            egui::Vec2::splat(16.0),
-                                        )
-                                        .frame(false)
-                                        .uv(self.tile.uv(idx))
-                                        .tint(fc)
-                                        .bg_fill(bc)
-                                        .rounding(false),
-                                    )
-                                    .clicked()
-                                {
-                                    *cell = Some(TileState {
-                                        idx: self.pencil_state.idx,
-                                        fc: self.pencil_state.fc,
-                                        bc: self.pencil_state.bc,
-                                    });
-                                }
-                            }
-                            None => {
-                                if ui
-                                    .add(
-                                        ImageButton::new(None, egui::Vec2::splat(16.0))
-                                            .frame(false)
-                                            .uv(self.tile.uv(idx))
-                                            .bg_fill(egui::Color32::TRANSPARENT)
-                                            .rounding(false),
-                                    )
-                                    .clicked()
-                                {
-                                    *cell = Some(TileState {
-                                        idx: self.pencil_state.idx,
-                                        fc: self.pencil_state.fc,
-                                        bc: self.pencil_state.bc,
-                                    });
-                                }
-                            }
-                        };
+                                ui.painter().rect_filled(rect, egui::Rounding::none(), bc);
+                                self.tile
+                                    .to_image(idx, egui::Vec2::splat(16.0))
+                                    .tint(fc)
+                                    .paint_at(ui, rect);
+                            } else {
+                                ui.painter().rect_filled(
+                                    rect,
+                                    egui::Rounding::none(),
+                                    if (i + j) % 2 == 0 {
+                                        egui::Color32::GRAY
+                                    } else {
+                                        egui::Color32::DARK_GRAY
+                                    },
+                                );
+                            };
+                        }
+                        if res.clicked() || res.dragged(){
+                            *cell = Some(TileState {
+                                idx: self.pencil_state.idx,
+                                fc: self.pencil_state.fc,
+                                bc: self.pencil_state.bc,
+                            });
+                        }
+
                         idx += 1;
                     }
                     ui.end_row();
