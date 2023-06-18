@@ -26,6 +26,12 @@ struct TileState {
     bc: egui::Color32,
 }
 
+impl Clone for TileState {
+    fn clone(&self) -> Self {
+        Self { ..*self }
+    }
+}
+
 struct PencilState {
     idx: usize,
     fc: egui::Color32,
@@ -44,6 +50,11 @@ impl FakePaint {
     fn new(cc: &eframe::CreationContext<'_>) -> Self {
         setup::custom_fonts(&cc.egui_ctx);
         cc.egui_ctx.set_visuals(egui::Visuals::dark());
+        let canvas_size_x: usize = 16;
+        let canvas_size_y: usize = 16;
+        let canvas_size = canvas_size_x * canvas_size_x;
+        let mut canvas_cells = Vec::with_capacity(canvas_size);
+        canvas_cells.resize(canvas_size, None);
         Self {
             tile: TileSet::new(
                 tile::load_texture(&cc.egui_ctx).unwrap(),
@@ -56,9 +67,9 @@ impl FakePaint {
                 fc: egui::Color32::WHITE,
                 bc: egui::Color32::BLACK,
             },
-            canvas_cells: Vec::with_capacity(256),
-            canvas_size_x: 16,
-            canvas_size_y: 16,
+            canvas_cells,
+            canvas_size_x,
+            canvas_size_y,
         }
     }
 
@@ -95,25 +106,98 @@ impl FakePaint {
         });
     }
 
-    fn draw_pencil_colors(&self, ui: &mut egui::Ui) {
+    fn draw_canvas(&mut self, ui: &mut egui::Ui) {
+        use image_button::ImageButton;
+        egui::Grid::new("canvas-cells")
+            .spacing(egui::Vec2::ZERO)
+            .striped(true)
+            .num_columns(16)
+            .min_col_width(16.0)
+            .min_row_height(16.0)
+            .show(ui, |ui| {
+                let canvas_cells = &mut self.canvas_cells;
+                let mut idx = 0;
+                for _ in 0..self.canvas_size_y {
+                    for _ in 0..self.canvas_size_x {
+                        let cell = &mut canvas_cells[idx];
+                        match cell {
+                            Some(c) => {
+                                let idx = c.idx;
+                                let bc = c.bc;
+                                let fc = c.fc;
+                                if ui
+                                    .add(
+                                        ImageButton::new(
+                                            Some(self.tile.tex.id()),
+                                            egui::Vec2::splat(16.0),
+                                        )
+                                        .frame(false)
+                                        .uv(self.tile.uv(idx))
+                                        .tint(fc)
+                                        .bg_fill(bc)
+                                        .rounding(false),
+                                    )
+                                    .clicked()
+                                {
+                                    *cell = Some(TileState {
+                                        idx: self.pencil_state.idx,
+                                        fc: self.pencil_state.fc,
+                                        bc: self.pencil_state.bc,
+                                    });
+                                }
+                            }
+                            None => {
+                                if ui
+                                    .add(
+                                        ImageButton::new(None, egui::Vec2::splat(16.0))
+                                            .frame(false)
+                                            .uv(self.tile.uv(idx))
+                                            .bg_fill(egui::Color32::TRANSPARENT)
+                                            .rounding(false),
+                                    )
+                                    .clicked()
+                                {
+                                    *cell = Some(TileState {
+                                        idx: self.pencil_state.idx,
+                                        fc: self.pencil_state.fc,
+                                        bc: self.pencil_state.bc,
+                                    });
+                                }
+                            }
+                        };
+                        idx += 1;
+                    }
+                    ui.end_row();
+                }
+            });
+    }
+
+    fn draw_pencil_colors(&mut self, ui: &mut egui::Ui) {
         egui::Grid::new("pencil-colors")
             .min_col_width(16.0)
             .num_columns(2)
             .show(ui, |ui| {
                 ui.label("前景色：");
-                let (rect, _) =
-                    ui.allocate_exact_size(egui::Vec2::splat(16.0), egui::Sense::hover());
+                let (rect, res) =
+                    ui.allocate_exact_size(egui::Vec2::splat(16.0), egui::Sense::click());
                 if ui.is_rect_visible(rect) {
                     ui.painter()
                         .rect_filled(rect, egui::Rounding::none(), self.pencil_state.fc);
                 }
+                if res.clicked() {
+                    std::mem::swap(&mut self.pencil_state.fc, &mut self.pencil_state.bc);
+                }
+
                 ui.end_row();
                 ui.label("背景色：");
-                let (rect, _) =
-                    ui.allocate_exact_size(egui::Vec2::splat(16.0), egui::Sense::hover());
+                let (rect, res) =
+                    ui.allocate_exact_size(egui::Vec2::splat(16.0), egui::Sense::click());
                 if ui.is_rect_visible(rect) {
                     ui.painter()
                         .rect_filled(rect, egui::Rounding::none(), self.pencil_state.bc);
+                }
+                if res.clicked() {
+                    std::mem::swap(&mut self.pencil_state.fc, &mut self.pencil_state.bc);
                 }
                 ui.end_row();
             });
@@ -137,11 +221,12 @@ impl FakePaint {
                     for _ in 0..self.tile.columns {
                         if ui
                             .add(
-                                ImageButton::new(self.tile.tex.id(), egui::Vec2::splat(16.0))
+                                ImageButton::new(Some(self.tile.tex.id()), egui::Vec2::splat(16.0))
                                     .selected(self.pencil_state.idx == idx)
                                     .frame(false)
                                     .uv(self.tile.uv(idx))
                                     .tint(egui::Color32::DARK_GRAY)
+                                    .bg_fill(egui::Color32::TRANSPARENT)
                                     .selected_tint(egui::Color32::WHITE)
                                     .selected_bg_fill(egui::Color32::TRANSPARENT)
                                     .rounding(false),
@@ -170,6 +255,8 @@ impl eframe::App for FakePaint {
                 ui.separator();
                 self.draw_pencil_colors(ui);
             });
-        egui::CentralPanel::default().show(ctx, |ui| {});
+        egui::CentralPanel::default().show(ctx, |ui| {
+            self.draw_canvas(ui);
+        });
     }
 }

@@ -2,7 +2,7 @@ use eframe::egui;
 use egui::TextureId;
 
 pub struct ImageButton<'a> {
-    tex: TextureId,
+    tex: Option<TextureId>,
     uv: egui::Rect,
     size: egui::Vec2,
     tint: egui::Color32,
@@ -17,7 +17,7 @@ pub struct ImageButton<'a> {
 }
 
 impl<'a> ImageButton<'a> {
-    pub fn new(tex: TextureId, size: egui::Vec2) -> Self {
+    pub fn new(tex: Option<TextureId>, size: egui::Vec2) -> Self {
         Self {
             tex,
             uv: egui::Rect::from_two_pos(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
@@ -48,7 +48,7 @@ impl<'a> ImageButton<'a> {
 
     #[allow(unused)]
     pub fn tex(mut self, tex: TextureId) -> Self {
-        self.tex = tex;
+        self.tex = Some(tex);
         self
     }
 
@@ -173,6 +173,8 @@ impl egui::Widget for ImageButton<'_> {
                 let visuals = ui.style().interact(&response);
                 let bg_fill = if on1 {
                     ui.visuals().selection.bg_fill
+                } else if let Some(bg) = bg_fill {
+                    bg
                 } else if response.has_focus() || response.hovered() {
                     visuals.bg_fill
                 } else {
@@ -192,21 +194,20 @@ impl egui::Widget for ImageButton<'_> {
             } else {
                 egui::Rounding::none()
             };
-
-            if need_rounding {
-                ui.painter()
-                    .rect_filled(rect.expand2(expansion), rounding, fill);
-            }
+            ui.painter()
+                .rect_filled(rect.expand2(expansion), rounding, fill);
             let image_rect = ui
                 .layout()
                 .align_size_within_rect(size, rect.shrink2(padding));
 
-            ui.painter().image(
-                tex,
-                image_rect,
-                uv,
-                if selected { selected_tint } else { tint },
-            );
+            if let Some(tex) = tex {
+                ui.painter().image(
+                    tex,
+                    image_rect,
+                    uv,
+                    if selected { selected_tint } else { tint },
+                );
+            }
             ui.painter()
                 .rect_stroke(rect.expand2(expansion), rounding, stroke);
         }
