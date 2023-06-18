@@ -2,7 +2,7 @@ use eframe::egui;
 
 pub struct TileSet {
     pub tex: egui::TextureHandle,
-    pub uv: Vec<egui::Rect>,
+    uv: Vec<egui::Rect>,
     pub columns: usize,
     pub rows: usize,
     pub tile_size: egui::Vec2,
@@ -64,14 +64,17 @@ impl TileSet {
         }
     }
 
+    #[allow(unused)]
     pub fn uv(&self, idx: usize) -> egui::Rect {
         self.uv[idx]
     }
 
+    #[allow(unused)]
     pub fn to_image(&self, idx: usize, size: egui::Vec2) -> egui::Image {
         egui::Image::new(self.tex.id(), size).uv(self.uv(idx))
     }
 
+    #[allow(unused)]
     pub fn to_image_xy(&self, idx: usize, sx: f32, sy: f32) -> egui::Image {
         egui::Image::new(self.tex.id(), egui::vec2(sx, sy)).uv(self.uv(idx))
     }
