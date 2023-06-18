@@ -99,6 +99,12 @@ impl<'a> ImageButton<'a> {
         self.frame = frame;
         self
     }
+
+    #[allow(unused)]
+    pub fn sense(mut self, sense: egui::Sense) -> Self {
+        self.sense = sense;
+        self
+    }
 }
 
 impl egui::Widget for ImageButton<'_> {

@@ -7,6 +7,8 @@ mod tile;
 use eframe::egui;
 use tile::TileSet;
 
+const TILE_SIZE: f32 = 16.0;
+
 fn main() -> Result<(), eframe::Error> {
     tracing_subscriber::fmt::init();
     let opts = eframe::NativeOptions {
@@ -20,16 +22,11 @@ fn main() -> Result<(), eframe::Error> {
     )
 }
 
+#[derive(Clone)]
 struct TileState {
     idx: usize,
     fc: egui::Color32,
     bc: egui::Color32,
-}
-
-impl Clone for TileState {
-    fn clone(&self) -> Self {
-        Self { ..*self }
-    }
 }
 
 struct PencilState {
@@ -38,12 +35,57 @@ struct PencilState {
     bc: egui::Color32,
 }
 
+impl PencilState {
+    pub fn into_tile_state(&self) -> TileState {
+        TileState {
+            idx: self.idx,
+            fc: self.fc,
+            bc: self.bc,
+        }
+    }
+}
+
 struct FakePaint {
     tile: TileSet,
     pencil_state: PencilState,
     canvas_cells: Vec<Option<TileState>>,
     canvas_size_x: usize,
     canvas_size_y: usize,
+}
+
+fn get_center_rect(rect: &egui::Rect, size: egui::Vec2) -> egui::Rect {
+    let rect_size = rect.size();
+    let offset_x = (rect_size.x - size.x) / 2.0;
+    let offset_y = (rect_size.y - size.y) / 2.0;
+    let egui::Pos2 {
+        x: rect_min_x,
+        y: rect_min_y,
+    } = rect.left_top();
+    egui::Rect::from_min_size(
+        egui::pos2(rect_min_x + offset_x, rect_min_y + offset_y),
+        size,
+    )
+}
+
+fn get_grid_x_y(rect: egui::Rect, pos: egui::Pos2, size: egui::Vec2) -> (usize, usize) {
+    let min = rect.min;
+    let x = (pos.x - min.x) / size.x;
+    let y = (pos.y - min.y) / size.y;
+    (x.floor() as usize, y.floor() as usize)
+}
+
+fn compute_grid_rect(rect: egui::Rect, grid_size: egui::Vec2, x: usize, y: usize) -> egui::Rect {
+    let egui::Pos2 {
+        x: left_top_x,
+        y: left_top_y,
+    } = rect.left_top();
+    egui::Rect::from_min_size(
+        egui::pos2(
+            left_top_x + grid_size.x * x as f32,
+            left_top_y + grid_size.y * y as f32,
+        ),
+        grid_size,
+    )
 }
 
 impl FakePaint {
@@ -60,10 +102,10 @@ impl FakePaint {
                 tile::load_texture(&cc.egui_ctx).unwrap(),
                 16,
                 16,
-                egui::vec2(16.0, 16.0),
+                egui::vec2(TILE_SIZE, TILE_SIZE),
             ),
             pencil_state: PencilState {
-                idx: 8,
+                idx: 0,
                 fc: egui::Color32::WHITE,
                 bc: egui::Color32::BLACK,
             },
@@ -77,103 +119,84 @@ impl FakePaint {
         &self.canvas_cells[y * self.canvas_size_x + x]
     }
 
-    fn get_center_rect(rect: &egui::Rect, size: egui::Vec2) -> egui::Rect {
-        let rect_size = rect.size();
-        let offset_x = (rect_size.x - size.x) / 2.0;
-        let offset_y = (rect_size.y - size.y) / 2.0;
-        let egui::Pos2 {
-            x: rect_min_x,
-            y: rect_min_y,
-        } = rect.left_top();
-        egui::Rect::from_min_size(
-            egui::pos2(rect_min_x + offset_x, rect_min_y + offset_y),
-            size,
-        )
-    }
-
     fn draw_pencil_state(&self, ui: &mut egui::Ui) {
         ui.horizontal_wrapped(|ui| {
             ui.label(egui::RichText::new("画笔：").size(24.0));
-            let (rect, _) = ui.allocate_exact_size(egui::Vec2::splat(24.0), egui::Sense::hover());
+            let (rect, _) = ui.allocate_exact_size(
+                egui::Vec2::splat(TILE_SIZE + 8.0),
+                egui::Sense::focusable_noninteractive(),
+            );
             if ui.is_rect_visible(rect) {
                 ui.painter()
                     .rect_filled(rect, egui::Rounding::none(), self.pencil_state.bc);
-                self.tile
-                    .to_image(self.pencil_state.idx, egui::Vec2::splat(16.0))
-                    .tint(self.pencil_state.fc)
-                    .paint_at(ui, Self::get_center_rect(&rect, egui::Vec2::splat(16.0)));
+                self.tile.paint_in_rect(
+                    ui,
+                    get_center_rect(&rect, egui::Vec2::splat(TILE_SIZE)),
+                    self.pencil_state.idx,
+                    self.pencil_state.fc,
+                    None,
+                );
             }
         });
     }
 
-    fn draw_canvas(&mut self, ui: &mut egui::Ui) {
-        egui::Grid::new("canvas-cells")
-            .spacing(egui::Vec2::ZERO)
-            .num_columns(16)
-            .min_col_width(16.0)
-            .min_row_height(16.0)
-            .show(ui, |ui| {
-                let canvas_cells = &mut self.canvas_cells;
-                let mut idx = 0;
-                for i in 0..self.canvas_size_y {
-                    for j in 0..self.canvas_size_x {
-                        let cell = &mut canvas_cells[idx];
-                        let (rect, res) = ui.allocate_exact_size(
-                            egui::Vec2::splat(16.0),
-                            egui::Sense::click_and_drag(),
-                        );
+    fn draw_canvas(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
+        let (rect, res) = ui.allocate_exact_size(
+            egui::Vec2::splat(TILE_SIZE * self.canvas_size_x as f32),
+            egui::Sense::drag(),
+        );
 
-                        if ui.is_rect_visible(rect) {
-                            if res.hovered() {
-                                ui.painter().rect_filled(rect, egui::Rounding::none(), self.pencil_state.bc);
-                                self.tile
-                                    .to_image(self.pencil_state.idx, egui::Vec2::splat(16.0))
-                                    .tint(self.pencil_state.fc)
-                                    .paint_at(ui, rect);
-                            } else if let Some(c) = cell {
-                                let idx = c.idx;
-                                let bc = c.bc;
-                                let fc = c.fc;
-                                ui.painter().rect_filled(rect, egui::Rounding::none(), bc);
-                                self.tile
-                                    .to_image(idx, egui::Vec2::splat(16.0))
-                                    .tint(fc)
-                                    .paint_at(ui, rect);
-                            } else {
-                                ui.painter().rect_filled(
-                                    rect,
-                                    egui::Rounding::none(),
-                                    if (i + j) % 2 == 0 {
-                                        egui::Color32::GRAY
-                                    } else {
-                                        egui::Color32::DARK_GRAY
-                                    },
-                                );
-                            };
-                        }
-                        if res.clicked() || res.dragged(){
-                            *cell = Some(TileState {
-                                idx: self.pencil_state.idx,
-                                fc: self.pencil_state.fc,
-                                bc: self.pencil_state.bc,
-                            });
-                        }
+        let hover_pos = res.hover_pos();
+        let canvas_cells = &mut self.canvas_cells;
+        let mut idx: usize = 0;
+        for y in 0..self.canvas_size_y {
+            for x in 0..self.canvas_size_x {
+                let rect = compute_grid_rect(rect, egui::Vec2::splat(TILE_SIZE), x, y);
+                let cell = &mut canvas_cells[idx];
 
-                        idx += 1;
-                    }
-                    ui.end_row();
+                if hover_pos != None && rect.contains(hover_pos.unwrap()) {
+                    self.tile.paint_in_rect(
+                        ui,
+                        rect,
+                        self.pencil_state.idx,
+                        self.pencil_state.fc,
+                        Some(self.pencil_state.bc),
+                    );
+                } else if let Some(c) = cell {
+                    let idx = c.idx;
+                    let bc = c.bc;
+                    let fc = c.fc;
+                    self.tile.paint_in_rect(ui, rect, idx, fc, Some(bc));
+                } else if ui.is_rect_visible(rect) {
+                    ui.painter().rect_filled(
+                        rect,
+                        egui::Rounding::none(),
+                        if (y + x) % 2 == 0 {
+                            egui::Color32::GRAY
+                        } else {
+                            egui::Color32::DARK_GRAY
+                        },
+                    );
                 }
-            });
+                idx += 1;
+            }
+        }
+
+        if res.dragged() && hover_pos != None {
+            let (x, y) = get_grid_x_y(rect, hover_pos.unwrap(), egui::Vec2::splat(TILE_SIZE));
+            let idx = y * self.canvas_size_x + x;
+            canvas_cells[idx] = Some(self.pencil_state.into_tile_state());
+        }
     }
 
     fn draw_pencil_colors(&mut self, ui: &mut egui::Ui) {
         egui::Grid::new("pencil-colors")
-            .min_col_width(16.0)
+            .min_col_width(TILE_SIZE)
             .num_columns(2)
             .show(ui, |ui| {
                 ui.label("前景色：");
                 let (rect, res) =
-                    ui.allocate_exact_size(egui::Vec2::splat(16.0), egui::Sense::click());
+                    ui.allocate_exact_size(egui::Vec2::splat(TILE_SIZE), egui::Sense::click());
                 if ui.is_rect_visible(rect) {
                     ui.painter()
                         .rect_filled(rect, egui::Rounding::none(), self.pencil_state.fc);
@@ -185,7 +208,7 @@ impl FakePaint {
                 ui.end_row();
                 ui.label("背景色：");
                 let (rect, res) =
-                    ui.allocate_exact_size(egui::Vec2::splat(16.0), egui::Sense::click());
+                    ui.allocate_exact_size(egui::Vec2::splat(TILE_SIZE), egui::Sense::click());
                 if ui.is_rect_visible(rect) {
                     ui.painter()
                         .rect_filled(rect, egui::Rounding::none(), self.pencil_state.bc);
@@ -207,27 +230,31 @@ impl FakePaint {
             .spacing(egui::Vec2::ZERO)
             .striped(true)
             .num_columns(16)
-            .min_col_width(16.0)
-            .min_row_height(16.0)
+            .min_col_width(TILE_SIZE)
+            .min_row_height(TILE_SIZE)
             .show(ui, |ui| {
                 let mut idx = 0;
                 for _ in 0..self.tile.rows {
                     for _ in 0..self.tile.columns {
-                        if ui
+                        let res = ui
                             .add(
-                                ImageButton::new(Some(self.tile.tex.id()), egui::Vec2::splat(16.0))
-                                    .selected(self.pencil_state.idx == idx)
-                                    .frame(false)
-                                    .uv(self.tile.uv(idx))
-                                    .tint(egui::Color32::DARK_GRAY)
-                                    .bg_fill(egui::Color32::TRANSPARENT)
-                                    .selected_tint(egui::Color32::WHITE)
-                                    .selected_bg_fill(egui::Color32::TRANSPARENT)
-                                    .rounding(false),
+                                ImageButton::new(
+                                    Some(self.tile.tex.id()),
+                                    egui::Vec2::splat(TILE_SIZE),
+                                )
+                                .selected(self.pencil_state.idx == idx)
+                                .frame(false)
+                                .uv(self.tile.uv(idx))
+                                .tint(egui::Color32::DARK_GRAY)
+                                .bg_fill(egui::Color32::TRANSPARENT)
+                                .selected_tint(egui::Color32::WHITE)
+                                .selected_bg_fill(egui::Color32::TRANSPARENT)
+                                .sense(egui::Sense::click_and_drag())
+                                .rounding(false),
                             )
-                            .on_hover_text(egui::RichText::new(idx.to_string()).strong().heading())
-                            .clicked()
-                        {
+                            .on_hover_text(egui::RichText::new(idx.to_string()).strong().heading());
+
+                        if res.clicked() || res.dragged() {
                             self.pencil_state.idx = idx;
                         }
                         idx += 1;
@@ -250,7 +277,7 @@ impl eframe::App for FakePaint {
                 self.draw_pencil_colors(ui);
             });
         egui::CentralPanel::default().show(ctx, |ui| {
-            self.draw_canvas(ui);
+            self.draw_canvas(ui, ctx);
         });
     }
 }

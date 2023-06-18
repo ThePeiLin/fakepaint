@@ -78,4 +78,21 @@ impl TileSet {
     pub fn to_image_xy(&self, idx: usize, sx: f32, sy: f32) -> egui::Image {
         egui::Image::new(self.tex.id(), egui::vec2(sx, sy)).uv(self.uv(idx))
     }
+
+    #[allow(unused)]
+    pub fn paint_in_rect(
+        &self,
+        ui: &mut egui::Ui,
+        rect: egui::Rect,
+        idx: usize,
+        tint: egui::Color32,
+        bg: Option<egui::Color32>,
+    ) {
+        if ui.is_rect_visible(rect) {
+            if let Some(bg) = bg {
+                ui.painter().rect_filled(rect, egui::Rounding::none(), bg);
+            }
+            ui.painter().image(self.tex.id(), rect, self.uv(idx), tint);
+        }
+    }
 }
