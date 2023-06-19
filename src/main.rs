@@ -22,26 +22,26 @@ fn main() -> Result<(), eframe::Error> {
     )
 }
 
-#[derive(Copy,Clone)]
+#[derive(Copy, Clone)]
 struct TileState {
     idx: usize,
     fc: egui::Color32,
     bc: egui::Color32,
 }
 
-#[derive(Copy,Clone)]
+#[derive(Copy, Clone)]
 struct PencilState {
     idx: usize,
     fc: egui::Color32,
     bc: egui::Color32,
 }
 
-impl Into<TileState> for PencilState{
-    fn into(self)->TileState{
-        TileState{
-            idx:self.idx,
-            fc:self.fc,
-            bc:self.bc,
+impl Into<TileState> for PencilState {
+    fn into(self) -> TileState {
+        TileState {
+            idx: self.idx,
+            fc: self.fc,
+            bc: self.bc,
         }
     }
 }
@@ -116,6 +116,10 @@ impl FakePaint {
         }
     }
 
+    pub fn access_cell_mut(&mut self, x: usize, y: usize) -> &mut Option<TileState> {
+        &mut self.canvas_cells[y * self.canvas_size_x + x]
+    }
+
     pub fn access_cell(&self, x: usize, y: usize) -> &Option<TileState> {
         &self.canvas_cells[y * self.canvas_size_x + x]
     }
@@ -148,13 +152,11 @@ impl FakePaint {
         );
 
         let hover_pos = res.hover_pos();
-        let canvas_cells = &mut self.canvas_cells;
         if ui.is_rect_visible(rect) {
-            let mut idx: usize = 0;
             for y in 0..self.canvas_size_y {
                 for x in 0..self.canvas_size_x {
                     let rect = compute_grid_rect(rect, egui::Vec2::splat(TILE_SIZE), x, y);
-                    let cell = &mut canvas_cells[idx];
+                    let cell = self.access_cell(x, y);
 
                     if hover_pos != None && rect.contains(hover_pos.unwrap()) {
                         self.tile.paint_in_rect(
@@ -180,15 +182,13 @@ impl FakePaint {
                             },
                         );
                     }
-                    idx += 1;
                 }
             }
         }
 
-        if res.dragged() && hover_pos != None {
+        if res.hovered() &&res.dragged() && hover_pos != None && rect.contains(hover_pos.unwrap()){
             let (x, y) = get_grid_x_y(rect, hover_pos.unwrap(), egui::Vec2::splat(TILE_SIZE));
-            let idx = y * self.canvas_size_x + x;
-            canvas_cells[idx] = Some(self.pencil_state.into());
+            *(self.access_cell_mut(x, y)) = Some(self.pencil_state.into());
         }
     }
 
@@ -255,7 +255,9 @@ impl FakePaint {
                                 .sense(egui::Sense::click_and_drag())
                                 .rounding(false),
                             )
-                            .on_hover_text(egui::RichText::new(idx.to_string()).strong().heading());
+                            .on_hover_text_at_pointer(
+                                egui::RichText::new(idx.to_string()).strong().heading(),
+                            );
 
                         if res.clicked() || res.dragged() {
                             self.pencil_state.idx = idx;
