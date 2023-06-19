@@ -22,25 +22,26 @@ fn main() -> Result<(), eframe::Error> {
     )
 }
 
-#[derive(Clone)]
+#[derive(Copy,Clone)]
 struct TileState {
     idx: usize,
     fc: egui::Color32,
     bc: egui::Color32,
 }
 
+#[derive(Copy,Clone)]
 struct PencilState {
     idx: usize,
     fc: egui::Color32,
     bc: egui::Color32,
 }
 
-impl PencilState {
-    pub fn into_tile_state(&self) -> TileState {
-        TileState {
-            idx: self.idx,
-            fc: self.fc,
-            bc: self.bc,
+impl Into<TileState> for PencilState{
+    fn into(self)->TileState{
+        TileState{
+            idx:self.idx,
+            fc:self.fc,
+            bc:self.bc,
         }
     }
 }
@@ -187,7 +188,7 @@ impl FakePaint {
         if res.dragged() && hover_pos != None {
             let (x, y) = get_grid_x_y(rect, hover_pos.unwrap(), egui::Vec2::splat(TILE_SIZE));
             let idx = y * self.canvas_size_x + x;
-            canvas_cells[idx] = Some(self.pencil_state.into_tile_state());
+            canvas_cells[idx] = Some(self.pencil_state.into());
         }
     }
 
