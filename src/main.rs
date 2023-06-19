@@ -140,7 +140,7 @@ impl FakePaint {
         });
     }
 
-    fn draw_canvas(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
+    fn draw_canvas(&mut self, ui: &mut egui::Ui) {
         let (rect, res) = ui.allocate_exact_size(
             egui::Vec2::splat(TILE_SIZE * self.canvas_size_x as f32),
             egui::Sense::drag(),
@@ -148,37 +148,39 @@ impl FakePaint {
 
         let hover_pos = res.hover_pos();
         let canvas_cells = &mut self.canvas_cells;
-        let mut idx: usize = 0;
-        for y in 0..self.canvas_size_y {
-            for x in 0..self.canvas_size_x {
-                let rect = compute_grid_rect(rect, egui::Vec2::splat(TILE_SIZE), x, y);
-                let cell = &mut canvas_cells[idx];
+        if ui.is_rect_visible(rect) {
+            let mut idx: usize = 0;
+            for y in 0..self.canvas_size_y {
+                for x in 0..self.canvas_size_x {
+                    let rect = compute_grid_rect(rect, egui::Vec2::splat(TILE_SIZE), x, y);
+                    let cell = &mut canvas_cells[idx];
 
-                if hover_pos != None && rect.contains(hover_pos.unwrap()) {
-                    self.tile.paint_in_rect(
-                        ui,
-                        rect,
-                        self.pencil_state.idx,
-                        self.pencil_state.fc,
-                        Some(self.pencil_state.bc),
-                    );
-                } else if let Some(c) = cell {
-                    let idx = c.idx;
-                    let bc = c.bc;
-                    let fc = c.fc;
-                    self.tile.paint_in_rect(ui, rect, idx, fc, Some(bc));
-                } else if ui.is_rect_visible(rect) {
-                    ui.painter().rect_filled(
-                        rect,
-                        egui::Rounding::none(),
-                        if (y + x) % 2 == 0 {
-                            egui::Color32::GRAY
-                        } else {
-                            egui::Color32::DARK_GRAY
-                        },
-                    );
+                    if hover_pos != None && rect.contains(hover_pos.unwrap()) {
+                        self.tile.paint_in_rect(
+                            ui,
+                            rect,
+                            self.pencil_state.idx,
+                            self.pencil_state.fc,
+                            Some(self.pencil_state.bc),
+                        );
+                    } else if let Some(c) = cell {
+                        let idx = c.idx;
+                        let bc = c.bc;
+                        let fc = c.fc;
+                        self.tile.paint_in_rect(ui, rect, idx, fc, Some(bc));
+                    } else if ui.is_rect_visible(rect) {
+                        ui.painter().rect_filled(
+                            rect,
+                            egui::Rounding::none(),
+                            if (y + x) % 2 == 0 {
+                                egui::Color32::GRAY
+                            } else {
+                                egui::Color32::DARK_GRAY
+                            },
+                        );
+                    }
+                    idx += 1;
                 }
-                idx += 1;
             }
         }
 
@@ -277,7 +279,7 @@ impl eframe::App for FakePaint {
                 self.draw_pencil_colors(ui);
             });
         egui::CentralPanel::default().show(ctx, |ui| {
-            self.draw_canvas(ui, ctx);
+            self.draw_canvas(ui);
         });
     }
 }
