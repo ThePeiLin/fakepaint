@@ -36,6 +36,16 @@ struct PencilState {
     bc: egui::Color32,
 }
 
+impl PencilState {
+    pub fn swap_color_and_into(self) -> TileState {
+        TileState {
+            idx: self.idx,
+            fc: self.bc,
+            bc: self.fc,
+        }
+    }
+}
+
 impl Into<TileState> for PencilState {
     fn into(self) -> TileState {
         TileState {
@@ -189,7 +199,12 @@ impl FakePaint {
         if res.hovered() && res.dragged() && hover_pos != None && rect.contains(hover_pos.unwrap())
         {
             let (x, y) = get_grid_x_y(rect, hover_pos.unwrap(), egui::Vec2::splat(TILE_SIZE));
-            *(self.access_cell_mut(x, y)) = Some(self.pencil_state.into());
+            let ctx = ui.ctx();
+            if ctx.input(|i| i.pointer.primary_down()) {
+                *(self.access_cell_mut(x, y)) = Some(self.pencil_state.into());
+            } else if ctx.input(|i| i.pointer.secondary_down()) {
+                *(self.access_cell_mut(x, y)) = Some(self.pencil_state.swap_color_and_into());
+            }
         }
     }
 
