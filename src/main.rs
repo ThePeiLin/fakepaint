@@ -1,11 +1,16 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod canvas;
+mod file;
 mod image_button;
 mod setup;
 mod tile;
 
 use eframe::egui;
+use file::write_canvas_to_file;
 use tile::TileSet;
+
+use crate::file::load_canvas_from_file;
 
 const TILE_SIZE: f32 = 16.0;
 
@@ -23,13 +28,6 @@ fn main() -> Result<(), eframe::Error> {
 }
 
 #[derive(Copy, Clone)]
-struct TileState {
-    idx: usize,
-    fc: egui::Color32,
-    bc: egui::Color32,
-}
-
-#[derive(Copy, Clone)]
 struct PencilState {
     idx: usize,
     fc: egui::Color32,
@@ -37,8 +35,8 @@ struct PencilState {
 }
 
 impl PencilState {
-    pub fn swap_color_and_into(self) -> TileState {
-        TileState {
+    pub fn swap_color_and_into(self) -> canvas::TileState {
+        canvas::TileState {
             idx: self.idx,
             fc: self.bc,
             bc: self.fc,
@@ -46,9 +44,9 @@ impl PencilState {
     }
 }
 
-impl Into<TileState> for PencilState {
-    fn into(self) -> TileState {
-        TileState {
+impl Into<canvas::TileState> for PencilState {
+    fn into(self) -> canvas::TileState {
+        canvas::TileState {
             idx: self.idx,
             fc: self.fc,
             bc: self.bc,
@@ -59,9 +57,7 @@ impl Into<TileState> for PencilState {
 struct FakePaint {
     tile: TileSet,
     pencil_state: PencilState,
-    canvas_cells: Vec<Option<TileState>>,
-    canvas_size_x: usize,
-    canvas_size_y: usize,
+    canvas: canvas::Canvas,
 }
 
 fn get_center_rect(rect: &egui::Rect, size: egui::Vec2) -> egui::Rect {
@@ -103,11 +99,10 @@ impl FakePaint {
     fn new(cc: &eframe::CreationContext<'_>) -> Self {
         setup::custom_fonts(&cc.egui_ctx);
         cc.egui_ctx.set_visuals(egui::Visuals::dark());
-        let canvas_size_x: usize = 16;
-        let canvas_size_y: usize = 16;
-        let canvas_size = canvas_size_x * canvas_size_x;
-        let mut canvas_cells = Vec::with_capacity(canvas_size);
-        canvas_cells.resize(canvas_size, None);
+        let Ok(canvas) = load_canvas_from_file(std::path::Path::new("output.json")) else
+        {
+            panic!("Can't load canvas from file output.json")
+        };
         Self {
             tile: TileSet::new(
                 tile::load_texture(&cc.egui_ctx).unwrap(),
@@ -120,18 +115,8 @@ impl FakePaint {
                 fc: egui::Color32::WHITE,
                 bc: egui::Color32::BLACK,
             },
-            canvas_cells,
-            canvas_size_x,
-            canvas_size_y,
+            canvas,
         }
-    }
-
-    pub fn access_cell_mut(&mut self, x: usize, y: usize) -> &mut Option<TileState> {
-        &mut self.canvas_cells[y * self.canvas_size_x + x]
-    }
-
-    pub fn access_cell(&self, x: usize, y: usize) -> &Option<TileState> {
-        &self.canvas_cells[y * self.canvas_size_x + x]
     }
 
     fn draw_pencil_state(&self, ui: &mut egui::Ui) {
@@ -157,16 +142,16 @@ impl FakePaint {
 
     fn draw_canvas(&mut self, ui: &mut egui::Ui) {
         let (rect, res) = ui.allocate_exact_size(
-            egui::Vec2::splat(TILE_SIZE * self.canvas_size_x as f32),
+            egui::Vec2::splat(TILE_SIZE * self.canvas.size_x as f32),
             egui::Sense::drag(),
         );
 
         let hover_pos = res.hover_pos();
         if ui.is_rect_visible(rect) {
-            for y in 0..self.canvas_size_y {
-                for x in 0..self.canvas_size_x {
+            for y in 0..self.canvas.size_y {
+                for x in 0..self.canvas.size_x {
                     let rect = compute_grid_rect(rect, egui::Vec2::splat(TILE_SIZE), x, y);
-                    let cell = self.access_cell(x, y);
+                    let cell = self.canvas.get_cell(x, y);
 
                     if hover_pos != None && rect.contains(hover_pos.unwrap()) {
                         self.tile.paint_in_rect(
@@ -201,9 +186,9 @@ impl FakePaint {
             let (x, y) = get_grid_x_y(rect, hover_pos.unwrap(), egui::Vec2::splat(TILE_SIZE));
             let ctx = ui.ctx();
             if ctx.input(|i| i.pointer.primary_down()) {
-                *(self.access_cell_mut(x, y)) = Some(self.pencil_state.into());
+                *(self.canvas.get_cell_mut(x, y)) = Some(self.pencil_state.into());
             } else if ctx.input(|i| i.pointer.secondary_down()) {
-                *(self.access_cell_mut(x, y)) = Some(self.pencil_state.swap_color_and_into());
+                *(self.canvas.get_cell_mut(x, y)) = Some(self.pencil_state.swap_color_and_into());
             }
         }
     }
@@ -317,5 +302,15 @@ impl eframe::App for FakePaint {
         egui::CentralPanel::default().show(ctx, |ui| {
             self.draw_canvas(ui);
         });
+    }
+
+    fn on_close_event(&mut self) -> bool {
+        use file::JsonableCanvas;
+        let res = write_canvas_to_file(&JsonableCanvas::from(&self.canvas), std::path::Path::new("output.json"));
+        if let Err(_) = res {
+            false
+        } else {
+            true
+        }
     }
 }
