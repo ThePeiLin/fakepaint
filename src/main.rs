@@ -186,7 +186,8 @@ impl FakePaint {
             }
         }
 
-        if res.hovered() &&res.dragged() && hover_pos != None && rect.contains(hover_pos.unwrap()){
+        if res.hovered() && res.dragged() && hover_pos != None && rect.contains(hover_pos.unwrap())
+        {
             let (x, y) = get_grid_x_y(rect, hover_pos.unwrap(), egui::Vec2::splat(TILE_SIZE));
             *(self.access_cell_mut(x, y)) = Some(self.pencil_state.into());
         }
@@ -223,6 +224,23 @@ impl FakePaint {
             });
     }
 
+    fn char_preview(&self, idx: usize, ui: &mut egui::Ui) {
+        ui.horizontal_wrapped(|ui| {
+            ui.add(
+                self.tile
+                    .to_image(idx, egui::Vec2::splat(TILE_SIZE * 1.5))
+                    .bg_fill(self.pencil_state.bc)
+                    .tint(self.pencil_state.fc),
+            );
+            ui.label(
+                egui::RichText::new(idx.to_string())
+                    .size(TILE_SIZE * 1.5)
+                    .strong()
+                    .heading(),
+            );
+        });
+    }
+
     fn char_selector(&mut self, ui: &mut egui::Ui) {
         use image_button::ImageButton;
         let idx = self.pencil_state.idx;
@@ -255,9 +273,9 @@ impl FakePaint {
                                 .sense(egui::Sense::click_and_drag())
                                 .rounding(false),
                             )
-                            .on_hover_text_at_pointer(
-                                egui::RichText::new(idx.to_string()).strong().heading(),
-                            );
+                            .on_hover_ui(|ui| {
+                                self.char_preview(idx, ui);
+                            });
 
                         if res.clicked() || res.dragged() {
                             self.pencil_state.idx = idx;
