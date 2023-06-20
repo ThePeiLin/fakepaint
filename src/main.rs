@@ -6,11 +6,12 @@ mod image_button;
 mod setup;
 mod tile;
 
+use canvas::Canvas;
+use canvas::TileState;
 use eframe::egui;
+use file::load_canvas_from_file;
 use file::write_canvas_to_file;
 use tile::TileSet;
-
-use crate::file::load_canvas_from_file;
 
 const TILE_SIZE: f32 = 16.0;
 
@@ -35,8 +36,8 @@ struct PencilState {
 }
 
 impl PencilState {
-    pub fn swap_color_and_into(self) -> canvas::TileState {
-        canvas::TileState {
+    pub fn swap_color_and_into(self) -> TileState {
+        TileState {
             idx: self.idx,
             fc: self.bc,
             bc: self.fc,
@@ -44,9 +45,9 @@ impl PencilState {
     }
 }
 
-impl Into<canvas::TileState> for PencilState {
-    fn into(self) -> canvas::TileState {
-        canvas::TileState {
+impl Into<TileState> for PencilState {
+    fn into(self) -> TileState {
+        TileState {
             idx: self.idx,
             fc: self.fc,
             bc: self.bc,
@@ -57,7 +58,7 @@ impl Into<canvas::TileState> for PencilState {
 struct FakePaint {
     tile: TileSet,
     pencil_state: PencilState,
-    canvas: canvas::Canvas,
+    canvas: Canvas,
 }
 
 fn get_center_rect(rect: &egui::Rect, size: egui::Vec2) -> egui::Rect {
@@ -99,7 +100,7 @@ impl FakePaint {
     fn new(cc: &eframe::CreationContext<'_>) -> Self {
         setup::custom_fonts(&cc.egui_ctx);
         cc.egui_ctx.set_visuals(egui::Visuals::dark());
-        let canvas: canvas::Canvas;
+        let canvas: Canvas;
         if let Ok(cc) = load_canvas_from_file(std::path::Path::new("output.json")) {
             canvas = cc;
         } else {
@@ -108,7 +109,7 @@ impl FakePaint {
             let size = size_x * size_x;
             let mut cells = Vec::with_capacity(size);
             cells.resize(size, None);
-            canvas = canvas::Canvas {
+            canvas = Canvas {
                 cells,
                 size_x,
                 size_y,
@@ -205,34 +206,42 @@ impl FakePaint {
     }
 
     fn draw_pencil_colors(&mut self, ui: &mut egui::Ui) {
-        egui::Grid::new("pencil-colors")
-            .min_col_width(TILE_SIZE)
-            .num_columns(2)
-            .show(ui, |ui| {
-                ui.label("前景色：");
-                let (rect, res) =
-                    ui.allocate_exact_size(egui::Vec2::splat(TILE_SIZE), egui::Sense::click());
-                if ui.is_rect_visible(rect) {
-                    ui.painter()
-                        .rect_filled(rect, egui::Rounding::none(), self.pencil_state.fc);
-                }
-                if res.clicked() {
-                    std::mem::swap(&mut self.pencil_state.fc, &mut self.pencil_state.bc);
-                }
+        ui.group(|ui| {
+            egui::Grid::new("pencil-colors")
+                .min_col_width(TILE_SIZE)
+                .num_columns(2)
+                .show(ui, |ui| {
+                    ui.label("前景色：");
+                    let (rect, res) =
+                        ui.allocate_exact_size(egui::Vec2::splat(TILE_SIZE), egui::Sense::click());
+                    if ui.is_rect_visible(rect) {
+                        ui.painter().rect_filled(
+                            rect,
+                            egui::Rounding::none(),
+                            self.pencil_state.fc,
+                        );
+                    }
+                    if res.clicked() {
+                        std::mem::swap(&mut self.pencil_state.fc, &mut self.pencil_state.bc);
+                    }
 
-                ui.end_row();
-                ui.label("背景色：");
-                let (rect, res) =
-                    ui.allocate_exact_size(egui::Vec2::splat(TILE_SIZE), egui::Sense::click());
-                if ui.is_rect_visible(rect) {
-                    ui.painter()
-                        .rect_filled(rect, egui::Rounding::none(), self.pencil_state.bc);
-                }
-                if res.clicked() {
-                    std::mem::swap(&mut self.pencil_state.fc, &mut self.pencil_state.bc);
-                }
-                ui.end_row();
-            });
+                    ui.end_row();
+                    ui.label("背景色：");
+                    let (rect, res) =
+                        ui.allocate_exact_size(egui::Vec2::splat(TILE_SIZE), egui::Sense::click());
+                    if ui.is_rect_visible(rect) {
+                        ui.painter().rect_filled(
+                            rect,
+                            egui::Rounding::none(),
+                            self.pencil_state.bc,
+                        );
+                    }
+                    if res.clicked() {
+                        std::mem::swap(&mut self.pencil_state.fc, &mut self.pencil_state.bc);
+                    }
+                    ui.end_row();
+                });
+        });
     }
 
     fn char_preview(&self, idx: usize, ui: &mut egui::Ui) {

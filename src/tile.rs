@@ -28,7 +28,7 @@ pub fn load_texture(ctx: &egui::Context) -> Option<egui::TextureHandle> {
     ascii.get_or_insert_with(|| {
         ctx.load_texture(
             "16x16_sm_ascii",
-            load_image_from_path(std::path::Path::new("assets/16x16_sm.png")).unwrap(),
+            load_image_from_path(std::path::Path::new("assets/16x16_sm_mod.png")).unwrap(),
             tex_opt,
         )
     });
