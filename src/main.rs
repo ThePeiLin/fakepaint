@@ -99,10 +99,21 @@ impl FakePaint {
     fn new(cc: &eframe::CreationContext<'_>) -> Self {
         setup::custom_fonts(&cc.egui_ctx);
         cc.egui_ctx.set_visuals(egui::Visuals::dark());
-        let Ok(canvas) = load_canvas_from_file(std::path::Path::new("output.json")) else
-        {
-            panic!("Can't load canvas from file output.json")
-        };
+        let canvas: canvas::Canvas;
+        if let Ok(cc) = load_canvas_from_file(std::path::Path::new("output.json")) {
+            canvas = cc;
+        } else {
+            let size_x: usize = 16;
+            let size_y: usize = 16;
+            let size = size_x * size_x;
+            let mut cells = Vec::with_capacity(size);
+            cells.resize(size, None);
+            canvas = canvas::Canvas {
+                cells,
+                size_x,
+                size_y,
+            }
+        }
         Self {
             tile: TileSet::new(
                 tile::load_texture(&cc.egui_ctx).unwrap(),
@@ -305,8 +316,7 @@ impl eframe::App for FakePaint {
     }
 
     fn on_close_event(&mut self) -> bool {
-        use file::JsonableCanvas;
-        let res = write_canvas_to_file(&JsonableCanvas::from(&self.canvas), std::path::Path::new("output.json"));
+        let res = write_canvas_to_file(&self.canvas, std::path::Path::new("output.json"));
         if let Err(_) = res {
             false
         } else {

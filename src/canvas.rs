@@ -1,12 +1,39 @@
 use eframe::egui;
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Serialize, Deserialize)]
 pub struct TileState {
     pub idx: usize,
+    #[serde(
+        serialize_with = "serialize_color32",
+        deserialize_with = "deserialize_color32"
+    )]
     pub fc: egui::Color32,
+    #[serde(
+        serialize_with = "serialize_color32",
+        deserialize_with = "deserialize_color32"
+    )]
     pub bc: egui::Color32,
 }
 
+fn serialize_color32<S>(color: &egui::Color32, ser: S) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+    ser.serialize_bytes(&color.to_array())
+}
+
+fn deserialize_color32<'de, D>(deser: D) -> Result<egui::Color32, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let a = <[u8; 4]>::deserialize(deser)?;
+    Ok(egui::Color32::from_rgba_premultiplied(
+        a[0], a[1], a[2], a[3],
+    ))
+}
+
+#[derive(Clone, Serialize, Deserialize)]
 pub struct Canvas {
     pub cells: Vec<Option<TileState>>,
     pub size_x: usize,
