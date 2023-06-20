@@ -1,6 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod canvas;
+mod color_editer;
 mod file;
 mod image_button;
 mod setup;

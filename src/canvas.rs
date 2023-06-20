@@ -1,7 +1,7 @@
 use eframe::egui;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
-#[derive(Copy, Clone, Serialize, Deserialize)]
+#[derive(Copy, Clone, Serialize, Deserialize, PartialEq, Eq, Debug)]
 pub struct TileState {
     pub idx: usize,
     #[serde(
@@ -14,6 +14,36 @@ pub struct TileState {
         deserialize_with = "deserialize_color32"
     )]
     pub bc: egui::Color32,
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    #[test]
+    fn test_ser() -> Result<(), serde_json::error::Error> {
+        let tile_state = TileState {
+            idx: 0,
+            fc: egui::Color32::WHITE,
+            bc: egui::Color32::BLACK,
+        };
+        let str = serde_json::to_string(&tile_state)?;
+        assert_eq!(str, r#"{"idx":0,"fc":[255,255,255,255],"bc":[0,0,0,255]}"#);
+        Ok(())
+    }
+    #[test]
+    fn test_de() -> Result<(), serde_json::error::Error> {
+        let tile_state: TileState =
+            serde_json::from_str(r#"{"idx":0,"fc":[255,255,255,255],"bc":[0,0,0,255]}"#)?;
+        assert_eq!(
+            tile_state,
+            TileState {
+                idx: 0,
+                fc: egui::Color32::WHITE,
+                bc: egui::Color32::BLACK,
+            }
+        );
+        Ok(())
+    }
 }
 
 fn serialize_color32<S>(color: &egui::Color32, ser: S) -> Result<S::Ok, S::Error>
