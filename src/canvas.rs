@@ -27,13 +27,13 @@ mod test {
             bc: egui::Color32::BLACK,
         };
         let str = serde_json::to_string(&tile_state)?;
-        assert_eq!(str, r#"{"idx":0,"fc":[255,255,255,255],"bc":[0,0,0,255]}"#);
+        assert_eq!(str, r#"{"idx":0,"fc":[255,255,255],"bc":[0,0,0]}"#);
         Ok(())
     }
     #[test]
     fn test_de() -> Result<(), serde_json::error::Error> {
         let tile_state: TileState =
-            serde_json::from_str(r#"{"idx":0,"fc":[255,255,255,255],"bc":[0,0,0,255]}"#)?;
+            serde_json::from_str(r#"{"idx":0,"fc":[255,255,255],"bc":[0,0,0]}"#)?;
         assert_eq!(
             tile_state,
             TileState {
@@ -50,24 +50,22 @@ fn serialize_color32<S>(color: &egui::Color32, ser: S) -> Result<S::Ok, S::Error
 where
     S: Serializer,
 {
-    ser.serialize_bytes(&color.to_array())
+    ser.serialize_bytes(&color.to_array()[0..3])
 }
 
 fn deserialize_color32<'de, D>(deser: D) -> Result<egui::Color32, D::Error>
 where
     D: Deserializer<'de>,
 {
-    let a = <[u8; 4]>::deserialize(deser)?;
-    Ok(egui::Color32::from_rgba_premultiplied(
-        a[0], a[1], a[2], a[3],
-    ))
+    let a = <[u8; 3]>::deserialize(deser)?;
+    Ok(egui::Color32::from_rgb(a[0], a[1], a[2]))
 }
 
 #[derive(Clone, Serialize, Deserialize)]
 pub struct Canvas {
-    pub cells: Vec<Option<TileState>>,
     pub size_x: usize,
     pub size_y: usize,
+    pub cells: Vec<Option<TileState>>,
 }
 
 impl Canvas {

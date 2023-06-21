@@ -8,7 +8,7 @@ mod setup;
 mod tile;
 
 use canvas::Canvas;
-use canvas::TileState;
+use color_editer::PencilState;
 use eframe::egui;
 use file::load_canvas_from_file;
 use file::write_canvas_to_file;
@@ -19,7 +19,7 @@ const TILE_SIZE: f32 = 16.0;
 fn main() -> Result<(), eframe::Error> {
     tracing_subscriber::fmt::init();
     let opts = eframe::NativeOptions {
-        initial_window_size: Some(egui::vec2(800.0, 600.0)),
+        initial_window_size: Some(egui::vec2(540.0, 410.0)),
         ..Default::default()
     };
     eframe::run_native(
@@ -27,33 +27,6 @@ fn main() -> Result<(), eframe::Error> {
         opts,
         Box::new(|cc| Box::new(FakePaint::new(cc))),
     )
-}
-
-#[derive(Copy, Clone)]
-struct PencilState {
-    idx: usize,
-    fc: egui::Color32,
-    bc: egui::Color32,
-}
-
-impl PencilState {
-    pub fn swap_color_and_into(self) -> TileState {
-        TileState {
-            idx: self.idx,
-            fc: self.bc,
-            bc: self.fc,
-        }
-    }
-}
-
-impl Into<TileState> for PencilState {
-    fn into(self) -> TileState {
-        TileState {
-            idx: self.idx,
-            fc: self.fc,
-            bc: self.bc,
-        }
-    }
 }
 
 struct FakePaint {
@@ -123,17 +96,13 @@ impl FakePaint {
                 16,
                 egui::vec2(TILE_SIZE, TILE_SIZE),
             ),
-            pencil_state: PencilState {
-                idx: 0,
-                fc: egui::Color32::WHITE,
-                bc: egui::Color32::BLACK,
-            },
+            pencil_state: PencilState::default(),
             canvas,
         }
     }
 
     fn draw_pencil_state(&self, ui: &mut egui::Ui) {
-        ui.horizontal_wrapped(|ui| {
+        ui.horizontal(|ui| {
             ui.label(egui::RichText::new("画笔：").size(24.0));
             let (rect, _) = ui.allocate_exact_size(
                 egui::Vec2::splat(TILE_SIZE + 8.0),
@@ -199,7 +168,7 @@ impl FakePaint {
             let (x, y) = get_grid_x_y(rect, hover_pos.unwrap(), egui::Vec2::splat(TILE_SIZE));
             let ctx = ui.ctx();
             if ctx.input(|i| i.pointer.primary_down()) {
-                *(self.canvas.get_cell_mut(x, y)) = Some(self.pencil_state.into());
+                *(self.canvas.get_cell_mut(x, y)) = Some(self.pencil_state.into_tile_state());
             } else if ctx.input(|i| i.pointer.secondary_down()) {
                 *(self.canvas.get_cell_mut(x, y)) = Some(self.pencil_state.swap_color_and_into());
             }
@@ -208,6 +177,11 @@ impl FakePaint {
 
     fn draw_pencil_colors(&mut self, ui: &mut egui::Ui) {
         ui.group(|ui| {
+            ui.horizontal(|ui| {
+                ui.heading("颜色");
+                use color_editer::ColorEditer;
+                ui.add(ColorEditer::new(&mut self.pencil_state));
+            });
             egui::Grid::new("pencil-colors")
                 .min_col_width(TILE_SIZE)
                 .num_columns(2)
@@ -246,12 +220,12 @@ impl FakePaint {
     }
 
     fn char_preview(&self, idx: usize, ui: &mut egui::Ui) {
-        ui.horizontal_wrapped(|ui| {
+        ui.horizontal(|ui| {
             ui.add(
                 self.tile
                     .to_image(idx, egui::Vec2::splat(TILE_SIZE * 1.5))
-                    .bg_fill(self.pencil_state.bc)
-                    .tint(self.pencil_state.fc),
+                    .tint(self.pencil_state.fc)
+                    .bg_fill(self.pencil_state.bc),
             );
             ui.label(
                 egui::RichText::new(idx.to_string())
