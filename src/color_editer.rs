@@ -20,6 +20,11 @@ pub struct PencilState {
 }
 
 impl PencilState {
+    pub fn swap_fc_bc(&mut self) {
+        std::mem::swap(&mut self.fc, &mut self.bc);
+        self.state=ColorEditerState::RGB;
+    }
+
     pub fn into_tile_state(&self) -> TileState {
         TileState {
             idx: self.idx,

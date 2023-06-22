@@ -197,7 +197,7 @@ impl FakePaint {
                         );
                     }
                     if res.clicked() {
-                        std::mem::swap(&mut self.pencil_state.fc, &mut self.pencil_state.bc);
+                        self.pencil_state.swap_fc_bc();
                     }
 
                     ui.end_row();
