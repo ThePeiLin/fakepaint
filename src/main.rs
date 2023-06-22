@@ -179,8 +179,7 @@ impl FakePaint {
         ui.group(|ui| {
             ui.horizontal(|ui| {
                 ui.heading("颜色");
-                use color_editer::ColorEditer;
-                ui.add(ColorEditer::new(&mut self.pencil_state));
+                ui.add(self.pencil_state.color_editer());
             });
             egui::Grid::new("pencil-colors")
                 .min_col_width(TILE_SIZE)
