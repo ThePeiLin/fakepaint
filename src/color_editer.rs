@@ -15,6 +15,8 @@ pub struct PencilState {
     pub idx: usize,
     pub fc: egui::Color32,
     pub bc: egui::Color32,
+    fc_activate: bool,
+    bc_activate: bool,
     open: bool,
     state: ColorEditerState,
     old_color: egui::Color32,
@@ -27,24 +29,57 @@ impl PencilState {
         self.state = ColorEditerState::RGB;
     }
 
-    pub fn into_tile_state(&self) -> TileState {
-        TileState {
-            idx: self.idx,
-            fc: self.fc,
-            bc: self.bc,
+    pub fn get_fc_bc(&self, cell: &Option<TileState>) -> Option<(egui::Color32, egui::Color32)> {
+        if !self.fc_activate && !self.bc_activate {
+            None
+        } else if *cell == None {
+            Some((self.fc, self.bc))
+        } else {
+            Some((
+                if self.fc_activate {
+                    self.fc
+                } else {
+                    cell.unwrap().fc
+                },
+                if self.bc_activate {
+                    self.bc
+                } else {
+                    cell.unwrap().bc
+                },
+            ))
         }
     }
 
-    pub fn swap_color_and_into(&self) -> TileState {
-        TileState {
+    pub fn into_tile_state(&self, origin_state: &Option<TileState>) -> Option<TileState> {
+        if let Some((fc, bc)) = self.get_fc_bc(origin_state) {
+            Some(TileState {
+                idx: self.idx,
+                fc,
+                bc,
+            })
+        } else {
+            None
+        }
+    }
+
+    pub fn fore_color_checkbox(&mut self, ui: &mut egui::Ui) -> egui::Response {
+        ui.checkbox(&mut self.fc_activate, "前景色：")
+    }
+
+    pub fn back_color_checkbox(&mut self, ui: &mut egui::Ui) -> egui::Response {
+        ui.checkbox(&mut self.bc_activate, "背景色：")
+    }
+
+    pub fn swap_color_and_into(&self) -> Option<TileState> {
+        Some(TileState {
             idx: self.idx,
             fc: self.bc,
             bc: self.fc,
-        }
+        })
     }
 
-    pub fn color_editer(&mut self) -> ColorEditer {
-        ColorEditer::new(self)
+    pub fn color_editer(&mut self, ui: &mut egui::Ui) -> egui::Response {
+        ui.add(ColorEditer::new(self))
     }
 }
 
@@ -54,6 +89,8 @@ impl Default for PencilState {
             idx: 0,
             fc: egui::Color32::WHITE,
             bc: egui::Color32::BLACK,
+            fc_activate: true,
+            bc_activate: true,
             open: false,
             state: ColorEditerState::RGB,
             old_color: egui::Color32::WHITE,
@@ -62,7 +99,7 @@ impl Default for PencilState {
     }
 }
 
-pub struct ColorEditer<'c> {
+struct ColorEditer<'c> {
     color: &'c mut egui::Color32,
     open: &'c mut bool,
     state: &'c mut ColorEditerState,
@@ -240,7 +277,7 @@ fn show_old_and_new_color(ui: &mut egui::Ui, old: egui::Color32, new: egui::Colo
 
 fn update_text(text: &mut String, color: &egui::Color32) {
     let (r, g, b, _) = color.to_tuple();
-    *text = format!("{:X}{:X}{:X}", r, g, b);
+    *text = format!("{:02X}{:02X}{:02X}", r, g, b);
 }
 
 impl egui::Widget for ColorEditer<'_> {
