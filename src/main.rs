@@ -34,6 +34,7 @@ struct FakePaint {
     pencil_state: PencilState,
     canvas: Canvas,
     cur_cell: Option<canvas::TileState>,
+    palette:Vec<egui::Color32>,
 }
 
 fn get_center_rect(rect: &egui::Rect, size: egui::Vec2) -> egui::Rect {
@@ -100,6 +101,7 @@ impl FakePaint {
             pencil_state: PencilState::default(),
             canvas,
             cur_cell: None,
+            palette:Vec::new(),
         }
     }
 
