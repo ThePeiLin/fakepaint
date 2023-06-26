@@ -21,7 +21,6 @@ pub struct PencilState {
     pub bc: egui::Color32,
     fc_activate: bool,
     bc_activate: bool,
-    open: bool,
     state: ColorEditerState,
     old_color: egui::Color32,
     text: String,
@@ -97,10 +96,9 @@ impl Default for PencilState {
             bc: egui::Color32::BLACK,
             fc_activate: true,
             bc_activate: true,
-            open: false,
             state: ColorEditerState::RGB,
             old_color: egui::Color32::WHITE,
-            text: "FFFFFF".to_string(),
+            text: "".to_string(),
             edting: EditingColor::FORE,
             is_gray: false,
         }
@@ -110,7 +108,6 @@ impl Default for PencilState {
 struct ColorEditer<'c> {
     color: &'c mut egui::Color32,
     other_color: egui::Color32,
-    open: &'c mut bool,
     state: &'c mut ColorEditerState,
     old_color: &'c mut egui::Color32,
     text: &'c mut String,
@@ -177,7 +174,6 @@ impl<'c> ColorEditer<'c> {
             old_color: &mut pen.old_color,
             color,
             other_color,
-            open: &mut pen.open,
             state: &mut pen.state,
             text: &mut pen.text,
             editing: &mut pen.edting,
@@ -286,43 +282,25 @@ fn color_components_edit<Num: egui::emath::Numeric>(
     .response
 }
 
-fn show_old_and_new_color(ui: &mut egui::Ui, old: egui::Color32, new: &mut egui::Color32) {
-    ui.horizontal_wrapped(|ui| {
-        let rect_height = crate::TILE_SIZE * 1.5;
-        ui.spacing_mut().item_spacing = egui::Vec2::ZERO;
-        let (rect, res) =
-            ui.allocate_exact_size(egui::Vec2::splat(rect_height), egui::Sense::click());
-
+fn show_old_and_new_color(ui: &mut egui::Ui, old: egui::Color32, new: egui::Color32) {
+    let rect_height = crate::TILE_SIZE * 1.5;
+    let (rect, _) = ui.allocate_exact_size(
+        egui::vec2(rect_height * 2.0, rect_height),
+        egui::Sense::hover(),
+    );
+    if ui.is_rect_visible(rect) {
         let rect_size = egui::Vec2::splat(rect_height);
-        if ui.is_rect_visible(rect) {
-            let rect1 = egui::Rect::from_min_size(rect.min, rect_size);
-            if res.hovered() {
-                let vec = rect_size * 0.125;
-                ui.painter().rect_filled(
-                    rect,
-                    egui::Rounding::none(),
-                    ui.style().visuals.selection.bg_fill,
-                );
-                let rect1 = egui::Rect::from_min_size(rect.min + vec, rect_size - vec * 2.0);
-                ui.painter().rect_filled(rect1, egui::Rounding::none(), old);
-            } else {
-                ui.painter().rect_filled(rect1, egui::Rounding::none(), old);
-            }
-        }
-
-        if res.clicked() {
-            *new = old;
-        }
-
-        let (rect, _) =
-            ui.allocate_exact_size(egui::Vec2::splat(rect_height), egui::Sense::hover());
-
-        if ui.is_rect_visible(rect) {
-            let rect1 = egui::Rect::from_min_size(rect.min, rect_size);
-            ui.painter()
-                .rect_filled(rect1, egui::Rounding::none(), *new);
-        }
-    });
+        ui.painter().rect_filled(
+            egui::Rect::from_min_size(rect.min, rect_size),
+            egui::Rounding::none(),
+            old,
+        );
+        ui.painter().rect_filled(
+            egui::Rect::from_min_size(rect.center_top(), rect_size),
+            egui::Rounding::none(),
+            new,
+        )
+    }
 }
 
 fn update_text(text: &mut String, color: &egui::Color32) {
@@ -332,19 +310,10 @@ fn update_text(text: &mut String, color: &egui::Color32) {
 
 impl egui::Widget for ColorEditer<'_> {
     fn ui(self, ui: &mut egui::Ui) -> egui::Response {
-        let res = ui.toggle_value(self.open, "编辑");
-        egui::Window::new("编辑颜色")
-            .collapsible(false)
-            .resizable(false)
-            .default_size(egui::Vec2::splat(0.0))
-            .default_pos(res.rect.center())
-            .open(self.open)
-            .show(ui.ctx(), |ui| {
+        let res = ui
+            .menu_button("编辑", |ui| {
                 ui.horizontal(|ui| {
-                    if res.changed() {
-                        update_text(self.text, self.color);
-                    }
-                    show_old_and_new_color(ui, *self.old_color, self.color);
+                    show_old_and_new_color(ui, *self.old_color, *self.color);
                     let res = ui.add(egui::widgets::TextEdit::singleline(self.text).char_limit(6));
                     if res.lost_focus() {
                         if self.text.len() == 6 {
@@ -400,6 +369,16 @@ impl egui::Widget for ColorEditer<'_> {
                     {
                         *self.state = ColorEditerState::HSL;
                     }
+
+                    if ui.button("＋").on_hover_text("添加到调色板").clicked() {
+                        ui.close_menu();
+                        *self.color = *self.old_color;
+                    }
+
+                    if ui.button("取消").clicked() {
+                        ui.close_menu();
+                        *self.color = *self.old_color;
+                    }
                 });
                 let (r, g, b, _) = self.color.to_tuple();
                 ui.horizontal(|ui| {
@@ -432,8 +411,10 @@ impl egui::Widget for ColorEditer<'_> {
                         gray_editer(ui, self.color, r, g, b);
                     });
                 });
-            });
-        if res.changed() {
+            })
+            .response;
+        if res.clicked() {
+            update_text(self.text, self.color);
             *self.old_color = *self.color;
         }
         res

@@ -19,7 +19,7 @@ const TILE_SIZE: f32 = 16.0;
 fn main() -> Result<(), eframe::Error> {
     tracing_subscriber::fmt::init();
     let opts = eframe::NativeOptions {
-        initial_window_size: Some(egui::vec2(540.0, 520.0)),
+        initial_window_size: Some(egui::vec2(550.0, 520.0)),
         ..Default::default()
     };
     eframe::run_native(
