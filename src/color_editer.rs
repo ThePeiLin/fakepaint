@@ -2,15 +2,19 @@ use crate::canvas::TileState;
 use eframe::egui;
 use palette::FromColor;
 
-#[derive(Clone, PartialEq)]
+#[derive(PartialEq)]
 enum ColorEditerState {
     RGB,
     HSV,
     HSL,
-    GRAY,
 }
 
-#[derive(Clone)]
+#[derive(PartialEq)]
+enum EditingColor {
+    FORE,
+    BACK,
+}
+
 pub struct PencilState {
     pub idx: usize,
     pub fc: egui::Color32,
@@ -21,6 +25,8 @@ pub struct PencilState {
     state: ColorEditerState,
     old_color: egui::Color32,
     text: String,
+    edting: EditingColor,
+    is_gray: bool,
 }
 
 impl PencilState {
@@ -95,61 +101,87 @@ impl Default for PencilState {
             state: ColorEditerState::RGB,
             old_color: egui::Color32::WHITE,
             text: "FFFFFF".to_string(),
+            edting: EditingColor::FORE,
+            is_gray: false,
         }
     }
 }
 
 struct ColorEditer<'c> {
     color: &'c mut egui::Color32,
+    other_color: egui::Color32,
     open: &'c mut bool,
     state: &'c mut ColorEditerState,
     old_color: &'c mut egui::Color32,
     text: &'c mut String,
+    editing: &'c mut EditingColor,
+    is_gray: &'c mut bool,
 }
 
-fn rgb_editer(ui: &mut egui::Ui, color: &mut egui::Color32, r: u8, g: u8, b: u8) {
+fn rgb_editer(ui: &mut egui::Ui, enabled: bool, color: &mut egui::Color32, r: u8, g: u8, b: u8) {
     let mut b = b as f32;
     let mut r = r as f32;
     let mut g = g as f32;
-    color_components_edit(ui, &mut r, "R", 0.0, 255.0);
-    color_components_edit(ui, &mut g, "G", 0.0, 255.0);
-    color_components_edit(ui, &mut b, "B", 0.0, 255.0);
+    ui.vertical(|ui| {
+        ui.set_enabled(enabled);
+        color_components_edit(ui, &mut r, "R", 0.0, 255.0);
+        color_components_edit(ui, &mut g, "G", 0.0, 255.0);
+        color_components_edit(ui, &mut b, "B", 0.0, 255.0);
+    });
     *color = egui::Color32::from_rgb(r as u8, g as u8, b as u8);
 }
 
-fn hsv_editer(ui: &mut egui::Ui, color: &mut egui::Color32, r: u8, g: u8, b: u8) {
+fn hsv_editer(ui: &mut egui::Ui, enabled: bool, color: &mut egui::Color32, r: u8, g: u8, b: u8) {
     let (mut h, mut s, mut v) = rgb_to_hsv(r, g, b);
-    color_components_edit(ui, &mut h, "H", 0.0, 360.0);
-    color_components_edit(ui, &mut s, "S", 0.0, 100.0);
-    color_components_edit(ui, &mut v, "V", 0.0, 100.0);
+    ui.vertical(|ui| {
+        ui.set_enabled(enabled);
+        color_components_edit(ui, &mut h, "H", 0.0, 360.0);
+        color_components_edit(ui, &mut s, "S", 0.0, 100.0);
+        color_components_edit(ui, &mut v, "V", 0.0, 100.0);
+    });
     let (r, g, b) = hsv_to_rgb(h, s, v);
     *color = egui::Color32::from_rgb(r, g, b);
 }
 
-fn hsl_editer(ui: &mut egui::Ui, color: &mut egui::Color32, r: u8, g: u8, b: u8) {
+fn hsl_editer(ui: &mut egui::Ui, enabled: bool, color: &mut egui::Color32, r: u8, g: u8, b: u8) {
     let (mut h, mut s, mut l) = rgb_to_hsl(r, g, b);
-    color_components_edit(ui, &mut h, "H", 0.0, 360.0);
-    color_components_edit(ui, &mut s, "S", 0.0, 100.0);
-    color_components_edit(ui, &mut l, "L", 0.0, 100.0);
+    ui.vertical(|ui| {
+        ui.set_enabled(enabled);
+        color_components_edit(ui, &mut h, "H", 0.0, 360.0);
+        color_components_edit(ui, &mut s, "S", 0.0, 100.0);
+        color_components_edit(ui, &mut l, "L", 0.0, 100.0);
+    });
     let (r, g, b) = hsl_to_rgb(h, s, l);
     *color = egui::Color32::from_rgb(r, g, b);
 }
 
 fn gray_editer(ui: &mut egui::Ui, color: &mut egui::Color32, r: u8, g: u8, b: u8) {
     let mut gray = rgb_to_gray(r, g, b);
-    color_components_edit(ui, &mut gray, "V", 0.0, 255.0);
-    let (r, g, b) = gray_to_rgb(gray);
-    *color = egui::Color32::from_rgb(r, g, b);
+    ui.vertical(|ui| {
+        color_components_edit(ui, &mut gray, "V", 0.0, 255.0);
+    });
+    if ui.is_enabled() {
+        let (r, g, b) = gray_to_rgb(gray);
+        *color = egui::Color32::from_rgb(r, g, b);
+    }
 }
 
 impl<'c> ColorEditer<'c> {
     pub fn new(pen: &'c mut PencilState) -> Self {
+        let (color, other_color) = if pen.edting == EditingColor::FORE {
+            (&mut pen.fc, pen.bc)
+        } else {
+            (&mut pen.bc, pen.fc)
+        };
         Self {
             old_color: &mut pen.old_color,
-            color: &mut pen.fc,
+            color,
+            other_color,
             open: &mut pen.open,
             state: &mut pen.state,
             text: &mut pen.text,
+            editing: &mut pen.edting,
+            is_gray: &mut pen.is_gray,
         }
     }
 }
@@ -254,25 +286,43 @@ fn color_components_edit<Num: egui::emath::Numeric>(
     .response
 }
 
-fn show_old_and_new_color(ui: &mut egui::Ui, old: egui::Color32, new: egui::Color32) {
-    let rect_height = crate::TILE_SIZE * 1.5;
-    let (rect, _) = ui.allocate_exact_size(
-        egui::vec2(rect_height * 2.0, rect_height),
-        egui::Sense::hover(),
-    );
-    if ui.is_rect_visible(rect) {
+fn show_old_and_new_color(ui: &mut egui::Ui, old: egui::Color32, new: &mut egui::Color32) {
+    ui.horizontal_wrapped(|ui| {
+        let rect_height = crate::TILE_SIZE * 1.5;
+        ui.spacing_mut().item_spacing = egui::Vec2::ZERO;
+        let (rect, res) =
+            ui.allocate_exact_size(egui::Vec2::splat(rect_height), egui::Sense::click());
+
         let rect_size = egui::Vec2::splat(rect_height);
-        ui.painter().rect_filled(
-            egui::Rect::from_min_size(rect.min, rect_size),
-            egui::Rounding::none(),
-            old,
-        );
-        ui.painter().rect_filled(
-            egui::Rect::from_min_size(rect.center_top(), rect_size),
-            egui::Rounding::none(),
-            new,
-        )
-    }
+        if ui.is_rect_visible(rect) {
+            let rect1 = egui::Rect::from_min_size(rect.min, rect_size);
+            if res.hovered() {
+                let vec = rect_size * 0.125;
+                ui.painter().rect_filled(
+                    rect,
+                    egui::Rounding::none(),
+                    ui.style().visuals.selection.bg_fill,
+                );
+                let rect1 = egui::Rect::from_min_size(rect.min + vec, rect_size - vec * 2.0);
+                ui.painter().rect_filled(rect1, egui::Rounding::none(), old);
+            } else {
+                ui.painter().rect_filled(rect1, egui::Rounding::none(), old);
+            }
+        }
+
+        if res.clicked() {
+            *new = old;
+        }
+
+        let (rect, _) =
+            ui.allocate_exact_size(egui::Vec2::splat(rect_height), egui::Sense::hover());
+
+        if ui.is_rect_visible(rect) {
+            let rect1 = egui::Rect::from_min_size(rect.min, rect_size);
+            ui.painter()
+                .rect_filled(rect1, egui::Rounding::none(), *new);
+        }
+    });
 }
 
 fn update_text(text: &mut String, color: &egui::Color32) {
@@ -294,7 +344,7 @@ impl egui::Widget for ColorEditer<'_> {
                     if res.changed() {
                         update_text(self.text, self.color);
                     }
-                    show_old_and_new_color(ui, *self.old_color, *self.color);
+                    show_old_and_new_color(ui, *self.old_color, self.color);
                     let res = ui.add(egui::widgets::TextEdit::singleline(self.text).char_limit(6));
                     if res.lost_focus() {
                         if self.text.len() == 6 {
@@ -329,6 +379,7 @@ impl egui::Widget for ColorEditer<'_> {
                 });
 
                 ui.horizontal(|ui| {
+                    ui.set_enabled(!*self.is_gray);
                     if ui
                         .selectable_label(*self.state == ColorEditerState::RGB, "RGB")
                         .clicked()
@@ -349,24 +400,38 @@ impl egui::Widget for ColorEditer<'_> {
                     {
                         *self.state = ColorEditerState::HSL;
                     }
-
-                    if ui
-                        .selectable_label(*self.state == ColorEditerState::GRAY, "GRAY")
-                        .clicked()
-                    {
-                        let (r, g, b, _) = self.color.to_tuple();
-                        let (r, g, b) = gray_to_rgb(rgb_to_gray(r, g, b));
-                        *self.color = egui::Color32::from_rgb(r, g, b);
-                        *self.state = ColorEditerState::GRAY;
-                    }
                 });
                 let (r, g, b, _) = self.color.to_tuple();
-                match *self.state {
-                    ColorEditerState::RGB => rgb_editer(ui, self.color, r, g, b),
-                    ColorEditerState::HSV => hsv_editer(ui, self.color, r, g, b),
-                    ColorEditerState::HSL => hsl_editer(ui, self.color, r, g, b),
-                    ColorEditerState::GRAY => gray_editer(ui, self.color, r, g, b),
-                }
+                ui.horizontal(|ui| {
+                    match *self.state {
+                        ColorEditerState::RGB => {
+                            rgb_editer(ui, !*self.is_gray, self.color, r, g, b)
+                        }
+                        ColorEditerState::HSV => {
+                            hsv_editer(ui, !*self.is_gray, self.color, r, g, b)
+                        }
+                        ColorEditerState::HSL => {
+                            hsl_editer(ui, !*self.is_gray, self.color, r, g, b)
+                        }
+                    };
+                    ui.vertical(|ui| {
+                        let res = if *self.editing == EditingColor::FORE {
+                            ui.selectable_value(self.editing, EditingColor::BACK, "前景色")
+                        } else {
+                            ui.selectable_value(self.editing, EditingColor::FORE, "背景色")
+                        };
+                        if res.changed() {
+                            *self.old_color = self.other_color;
+                        }
+                        if ui.toggle_value(self.is_gray, "GRAY").clicked() {
+                            let (r, g, b, _) = self.color.to_tuple();
+                            let (r, g, b) = gray_to_rgb(rgb_to_gray(r, g, b));
+                            *self.color = egui::Color32::from_rgb(r, g, b);
+                        }
+                        ui.set_enabled(*self.is_gray);
+                        gray_editer(ui, self.color, r, g, b);
+                    });
+                });
             });
         if res.changed() {
             *self.old_color = *self.color;
