@@ -28,10 +28,6 @@ impl Palette {
         self.palette[idx]
     }
 
-    pub fn vec(&self) -> &Vec<egui::Color32> {
-        &self.palette
-    }
-
     pub fn add_color(&mut self, color: egui::Color32) {
         if !self.contains_color(color) {
             self.palette.push(color);
