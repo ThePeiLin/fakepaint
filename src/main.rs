@@ -14,12 +14,15 @@ use file::load_canvas_from_file;
 use file::write_canvas_to_file;
 use tile::TileSet;
 
+const PALETTE_X: usize = 8;
+const PALETTE_Y: usize = 4;
 const TILE_SIZE: f32 = 16.0;
+const TILE_SIZE_VEC2: egui::Vec2 = egui::Vec2::splat(16.0);
 
 fn main() -> Result<(), eframe::Error> {
     tracing_subscriber::fmt::init();
     let opts = eframe::NativeOptions {
-        initial_window_size: Some(egui::vec2(550.0, 520.0)),
+        initial_window_size: Some(egui::vec2(550.0, 540.0)),
         ..Default::default()
     };
     eframe::run_native(
@@ -34,7 +37,6 @@ struct FakePaint {
     pencil_state: PencilState,
     canvas: Canvas,
     cur_cell: Option<canvas::TileState>,
-    palette:Vec<egui::Color32>,
 }
 
 fn get_center_rect(rect: &egui::Rect, size: egui::Vec2) -> egui::Rect {
@@ -96,12 +98,11 @@ impl FakePaint {
                 tile::load_texture(&cc.egui_ctx).unwrap(),
                 16,
                 16,
-                egui::vec2(TILE_SIZE, TILE_SIZE),
+                TILE_SIZE_VEC2,
             ),
             pencil_state: PencilState::default(),
             canvas,
             cur_cell: None,
-            palette:Vec::new(),
         }
     }
 
@@ -117,7 +118,7 @@ impl FakePaint {
                     .rect_filled(rect, egui::Rounding::none(), self.pencil_state.bc);
                 self.tile.paint_in_rect(
                     ui,
-                    get_center_rect(&rect, egui::Vec2::splat(TILE_SIZE)),
+                    get_center_rect(&rect, TILE_SIZE_VEC2),
                     self.pencil_state.idx,
                     self.pencil_state.fc,
                     None,
@@ -157,7 +158,7 @@ impl FakePaint {
         if ui.is_rect_visible(rect) {
             for y in 0..self.canvas.size_y {
                 for x in 0..self.canvas.size_x {
-                    let rect = compute_grid_rect(rect, egui::Vec2::splat(TILE_SIZE), x, y);
+                    let rect = compute_grid_rect(rect, TILE_SIZE_VEC2, x, y);
                     let cell = self.canvas.get_cell(x, y);
 
                     if hover_pos != None && rect.contains(hover_pos.unwrap()) {
@@ -180,7 +181,7 @@ impl FakePaint {
 
         if res.hovered() && res.dragged() && hover_pos != None && rect.contains(hover_pos.unwrap())
         {
-            let (x, y) = get_grid_x_y(rect, hover_pos.unwrap(), egui::Vec2::splat(TILE_SIZE));
+            let (x, y) = get_grid_x_y(rect, hover_pos.unwrap(), TILE_SIZE_VEC2);
             let ctx = ui.ctx();
             if ctx.input(|i| i.pointer.primary_down()) {
                 let cell_ref = self.canvas.get_cell_mut(x, y);
@@ -191,39 +192,165 @@ impl FakePaint {
         }
     }
 
-    fn draw_pencil_colors(&mut self, ui: &mut egui::Ui) {
-        ui.horizontal(|ui| {
-            ui.heading("颜色");
-            self.pencil_state.color_editer(ui);
-        });
-        egui::Grid::new("pencil-colors")
-            .min_col_width(TILE_SIZE)
-            .num_columns(2)
-            .show(ui, |ui| {
-                self.pencil_state.fore_color_checkbox(ui);
-                let (rect, res) =
-                    ui.allocate_exact_size(egui::Vec2::splat(TILE_SIZE), egui::Sense::click());
+    fn draw_palette(&mut self, ui: &mut egui::Ui) {
+        use egui::containers::scroll_area::ScrollBarVisibility;
+        fn fill_empty(ui: &mut egui::Ui) {
+            for _ in 0..PALETTE_X {
+                let (rect, _) = ui.allocate_exact_size(TILE_SIZE_VEC2, egui::Sense::hover());
                 if ui.is_rect_visible(rect) {
-                    ui.painter()
-                        .rect_filled(rect, egui::Rounding::none(), self.pencil_state.fc);
+                    ui.painter().rect_filled(
+                        rect,
+                        egui::Rounding::none(),
+                        egui::Color32::TRANSPARENT,
+                    );
                 }
-                if res.clicked() {
-                    self.pencil_state.swap_fc_bc();
+            }
+            for i in PALETTE_X..(PALETTE_Y * PALETTE_X) {
+                if i % PALETTE_X == 0 {
+                    ui.end_row()
                 }
+                let (rect, _) = ui.allocate_exact_size(TILE_SIZE_VEC2, egui::Sense::hover());
+                if ui.is_rect_visible(rect) {
+                    ui.painter().rect_filled(
+                        rect,
+                        egui::Rounding::none(),
+                        egui::Color32::TRANSPARENT,
+                    );
+                }
+            }
+        }
+        fn fill_rest(last: usize, rest: usize, ui: &mut egui::Ui) {
+            for i in last..rest + last {
+                if i % PALETTE_X == 0 {
+                    ui.end_row()
+                }
+                let (rect, _) = ui.allocate_exact_size(TILE_SIZE_VEC2, egui::Sense::hover());
+                if ui.is_rect_visible(rect) {
+                    ui.painter().rect_filled(
+                        rect,
+                        egui::Rounding::none(),
+                        egui::Color32::TRANSPARENT,
+                    );
+                }
+            }
+        }
 
-                ui.end_row();
-                self.pencil_state.back_color_checkbox(ui);
-                let (rect, res) =
-                    ui.allocate_exact_size(egui::Vec2::splat(TILE_SIZE), egui::Sense::click());
-                if ui.is_rect_visible(rect) {
+        fn draw_color(
+            color: egui::Color32,
+            ui: &mut egui::Ui,
+            rect: egui::Rect,
+            res: &egui::Response,
+            stroke: egui::Stroke,
+        ) {
+            if ui.is_rect_visible(rect) {
+                ui.painter()
+                    .rect_filled(rect, egui::Rounding::none(), color);
+                if res.hovered() {
                     ui.painter()
-                        .rect_filled(rect, egui::Rounding::none(), self.pencil_state.bc);
+                        .rect_stroke(rect.expand(2.0), egui::Rounding::none(), stroke)
                 }
-                if res.clicked() {
-                    std::mem::swap(&mut self.pencil_state.fc, &mut self.pencil_state.bc);
-                }
-                ui.end_row();
+            }
+        }
+
+        ui.vertical(|ui| {
+            ui.horizontal(|ui| {
+                ui.heading("调色板");
+                self.pencil_state.palette_state_toggle(ui);
             });
+            egui::ScrollArea::vertical()
+                .scroll_bar_visibility(ScrollBarVisibility::AlwaysVisible)
+                .show(ui, |ui| {
+                    egui::Grid::new("palette-colors-grid")
+                        .spacing(egui::Vec2::ZERO)
+                        .striped(true)
+                        .num_columns(8)
+                        .min_col_width(TILE_SIZE)
+                        .min_row_height(TILE_SIZE)
+                        .show(ui, |ui| {
+                            let palette = self.pencil_state.palette.vec().clone();
+                            let len = palette.len();
+                            if len == 0 {
+                                fill_empty(ui);
+                                return;
+                            }
+                            let need_fill_rest = len < PALETTE_X;
+                            let mut i = 0;
+                            let first_line = if need_fill_rest { len } else { PALETTE_X };
+                            let stroke = ui.style().visuals.selection.stroke;
+                            for c in &palette[0..first_line] {
+                                let (rect, res) =
+                                    ui.allocate_exact_size(TILE_SIZE_VEC2, egui::Sense::click());
+                                draw_color(*c, ui, rect, &res, stroke);
+                                if res.clicked() {
+                                    self.pencil_state.do_click_color_action(i);
+                                } else if res.secondary_clicked() {
+                                    self.pencil_state.do_secondary_click_color_action(i);
+                                }
+                                i += 1;
+                            }
+                            for c in &palette[first_line..len] {
+                                if i % PALETTE_X == 0 {
+                                    ui.end_row();
+                                }
+                                let (rect, res) =
+                                    ui.allocate_exact_size(TILE_SIZE_VEC2, egui::Sense::click());
+                                draw_color(*c, ui, rect, &res, stroke);
+                                if res.clicked() {
+                                    self.pencil_state.do_click_color_action(i);
+                                } else if res.secondary_clicked() {
+                                    self.pencil_state.do_secondary_click_color_action(i);
+                                }
+                                i += 1;
+                            }
+
+                            let y = len / PALETTE_X + (if len % PALETTE_X != 0 { 1 } else { 0 });
+                            if y < PALETTE_Y {
+                                fill_rest(0, (PALETTE_Y - y) * PALETTE_X, ui);
+                            }
+                        });
+                });
+        });
+    }
+
+    fn draw_pencil_colors(&mut self, ui: &mut egui::Ui) {
+        ui.vertical(|ui| {
+            ui.horizontal(|ui| {
+                ui.heading("颜色");
+                self.pencil_state.color_editer(ui);
+            });
+            egui::Grid::new("pencil-colors")
+                .min_col_width(TILE_SIZE)
+                .num_columns(2)
+                .show(ui, |ui| {
+                    self.pencil_state.fore_color_checkbox(ui);
+                    let (rect, res) = ui.allocate_exact_size(TILE_SIZE_VEC2, egui::Sense::click());
+                    if ui.is_rect_visible(rect) {
+                        ui.painter().rect_filled(
+                            rect,
+                            egui::Rounding::none(),
+                            self.pencil_state.fc,
+                        );
+                    }
+                    if res.clicked() {
+                        self.pencil_state.swap_fc_bc();
+                    }
+
+                    ui.end_row();
+                    self.pencil_state.back_color_checkbox(ui);
+                    let (rect, res) = ui.allocate_exact_size(TILE_SIZE_VEC2, egui::Sense::click());
+                    if ui.is_rect_visible(rect) {
+                        ui.painter().rect_filled(
+                            rect,
+                            egui::Rounding::none(),
+                            self.pencil_state.bc,
+                        );
+                    }
+                    if res.clicked() {
+                        std::mem::swap(&mut self.pencil_state.fc, &mut self.pencil_state.bc);
+                    }
+                    ui.end_row();
+                });
+        });
     }
 
     fn char_preview(&self, idx: usize, ui: &mut egui::Ui) {
@@ -293,19 +420,16 @@ impl FakePaint {
                     for _ in 0..self.tile.columns {
                         let res = ui
                             .add(
-                                ImageButton::new(
-                                    Some(self.tile.tex.id()),
-                                    egui::Vec2::splat(TILE_SIZE),
-                                )
-                                .selected(self.pencil_state.idx == idx)
-                                .frame(false)
-                                .uv(self.tile.uv(idx))
-                                .tint(egui::Color32::DARK_GRAY)
-                                .bg_fill(egui::Color32::TRANSPARENT)
-                                .selected_tint(egui::Color32::WHITE)
-                                .selected_bg_fill(egui::Color32::TRANSPARENT)
-                                .sense(egui::Sense::click_and_drag())
-                                .rounding(false),
+                                ImageButton::new(Some(self.tile.tex.id()), TILE_SIZE_VEC2)
+                                    .selected(self.pencil_state.idx == idx)
+                                    .frame(false)
+                                    .uv(self.tile.uv(idx))
+                                    .tint(egui::Color32::DARK_GRAY)
+                                    .bg_fill(egui::Color32::TRANSPARENT)
+                                    .selected_tint(egui::Color32::WHITE)
+                                    .selected_bg_fill(egui::Color32::TRANSPARENT)
+                                    .sense(egui::Sense::click_and_drag())
+                                    .rounding(false),
                             )
                             .on_hover_ui(|ui| {
                                 self.char_preview(idx, ui);
@@ -331,7 +455,11 @@ impl eframe::App for FakePaint {
                 ui.separator();
                 self.char_selector(ui);
                 ui.separator();
-                self.draw_pencil_colors(ui);
+                ui.horizontal(|ui| {
+                    self.draw_palette(ui);
+                    ui.separator();
+                    self.draw_pencil_colors(ui);
+                });
                 ui.separator();
                 self.current_cell_info(ui);
             });

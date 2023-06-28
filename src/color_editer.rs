@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use crate::canvas::TileState;
 use eframe::egui;
 use palette::FromColor;
@@ -15,10 +17,58 @@ enum EditingColor {
     BACK,
 }
 
+pub struct Palette {
+    pub palette: Vec<egui::Color32>,
+    color_index_hash_map: HashMap<egui::Color32, usize>,
+    editing: bool,
+}
+
+impl Palette {
+    pub fn get_color(&self, idx: usize) -> egui::Color32 {
+        self.palette[idx]
+    }
+
+    pub fn vec(&self) -> &Vec<egui::Color32> {
+        &self.palette
+    }
+
+    pub fn add_color(&mut self, color: egui::Color32) {
+        if !self.contains_color(color) {
+            self.palette.push(color);
+            self.color_index_hash_map.insert(color, self.palette.len());
+        }
+    }
+
+    pub fn delete_color(&mut self, idx: usize) {
+        let color = self.palette.remove(idx);
+        self.color_index_hash_map.remove(&color);
+        for (i, c) in self.palette[idx..self.palette.len()].iter().enumerate() {
+            self.color_index_hash_map.insert(*c, i);
+        }
+    }
+
+    pub fn contains_color(&self, color: egui::Color32) -> bool {
+        self.color_index_hash_map.contains_key(&color)
+    }
+    pub fn new() -> Self {
+        let palette = vec![egui::Color32::BLACK, egui::Color32::WHITE];
+        let mut color_index_hash_map = HashMap::with_capacity(palette.len());
+        for (i, c) in palette.iter().enumerate() {
+            color_index_hash_map.insert(*c, i);
+        }
+        Self {
+            palette,
+            color_index_hash_map,
+            editing: false,
+        }
+    }
+}
+
 pub struct PencilState {
     pub idx: usize,
     pub fc: egui::Color32,
     pub bc: egui::Color32,
+    pub palette: Palette,
     fc_activate: bool,
     bc_activate: bool,
     state: ColorEditerState,
@@ -53,6 +103,26 @@ impl PencilState {
                 },
             ))
         }
+    }
+
+    pub fn do_click_color_action(&mut self, idx: usize) {
+        if self.palette.editing {
+            self.palette.delete_color(idx);
+        } else {
+            self.fc = self.palette.get_color(idx);
+        }
+    }
+
+    pub fn do_secondary_click_color_action(&mut self, idx: usize) {
+        if self.palette.editing {
+            self.palette.delete_color(idx);
+        } else {
+            self.fc = self.palette.get_color(idx);
+        }
+    }
+
+    pub fn palette_state_toggle(&mut self, ui: &mut egui::Ui) -> egui::Response {
+        ui.toggle_value(&mut self.palette.editing, "删除")
     }
 
     pub fn into_tile_state(&self, origin_state: &Option<TileState>) -> Option<TileState> {
@@ -90,6 +160,11 @@ impl PencilState {
 
 impl Default for PencilState {
     fn default() -> Self {
+        let palette = vec![egui::Color32::BLACK, egui::Color32::WHITE];
+        let mut color_index_hash_map = HashMap::with_capacity(palette.len());
+        for (i, c) in palette.iter().enumerate() {
+            color_index_hash_map.insert(*c, i);
+        }
         Self {
             idx: 0,
             fc: egui::Color32::WHITE,
@@ -101,6 +176,7 @@ impl Default for PencilState {
             text: "".to_string(),
             edting: EditingColor::FORE,
             is_gray: false,
+            palette: Palette::new(),
         }
     }
 }
@@ -113,6 +189,7 @@ struct ColorEditer<'c> {
     text: &'c mut String,
     editing: &'c mut EditingColor,
     is_gray: &'c mut bool,
+    palette: &'c mut Palette,
 }
 
 fn rgb_editer(ui: &mut egui::Ui, enabled: bool, color: &mut egui::Color32, r: u8, g: u8, b: u8) {
@@ -178,6 +255,7 @@ impl<'c> ColorEditer<'c> {
             text: &mut pen.text,
             editing: &mut pen.edting,
             is_gray: &mut pen.is_gray,
+            palette: &mut pen.palette,
         }
     }
 }
@@ -371,8 +449,7 @@ impl egui::Widget for ColorEditer<'_> {
                     }
 
                     if ui.button("＋").on_hover_text("添加到调色板").clicked() {
-                        ui.close_menu();
-                        *self.color = *self.old_color;
+                        self.palette.add_color(*self.color);
                     }
 
                     if ui.button("取消").clicked() {
