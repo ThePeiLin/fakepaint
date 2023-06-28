@@ -267,8 +267,7 @@ impl FakePaint {
                         .min_col_width(TILE_SIZE)
                         .min_row_height(TILE_SIZE)
                         .show(ui, |ui| {
-                            let palette = self.pencil_state.palette.vec().clone();
-                            let len = palette.len();
+                            let len = self.pencil_state.palette_len();
                             if len == 0 {
                                 fill_empty(ui);
                                 return;
@@ -277,10 +276,11 @@ impl FakePaint {
                             let mut i = 0;
                             let first_line = if need_fill_rest { len } else { PALETTE_X };
                             let stroke = ui.style().visuals.selection.stroke;
-                            for c in &palette[0..first_line] {
+                            while i < first_line {
+                                let c = self.pencil_state.get_color(i);
                                 let (rect, res) =
                                     ui.allocate_exact_size(TILE_SIZE_VEC2, egui::Sense::click());
-                                draw_color(*c, ui, rect, &res, stroke);
+                                draw_color(c, ui, rect, &res, stroke);
                                 if res.clicked() {
                                     self.pencil_state.do_click_color_action(i);
                                 } else if res.secondary_clicked() {
@@ -288,13 +288,14 @@ impl FakePaint {
                                 }
                                 i += 1;
                             }
-                            for c in &palette[first_line..len] {
+                            while i < len {
+                                let c = self.pencil_state.get_color(i);
                                 if i % PALETTE_X == 0 {
                                     ui.end_row();
                                 }
                                 let (rect, res) =
                                     ui.allocate_exact_size(TILE_SIZE_VEC2, egui::Sense::click());
-                                draw_color(*c, ui, rect, &res, stroke);
+                                draw_color(c, ui, rect, &res, stroke);
                                 if res.clicked() {
                                     self.pencil_state.do_click_color_action(i);
                                 } else if res.secondary_clicked() {
@@ -302,7 +303,6 @@ impl FakePaint {
                                 }
                                 i += 1;
                             }
-
                             let y = len / PALETTE_X + (if len % PALETTE_X != 0 { 1 } else { 0 });
                             if y < PALETTE_Y {
                                 fill_rest(0, (PALETTE_Y - y) * PALETTE_X, ui);

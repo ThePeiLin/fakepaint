@@ -24,7 +24,7 @@ pub struct Palette {
 }
 
 impl Palette {
-    pub fn get_color(&self, idx: usize) -> egui::Color32 {
+    fn get_color(&self, idx: usize) -> egui::Color32 {
         self.palette[idx]
     }
 
@@ -123,6 +123,14 @@ impl PencilState {
 
     pub fn palette_state_toggle(&mut self, ui: &mut egui::Ui) -> egui::Response {
         ui.toggle_value(&mut self.palette.editing, "删除")
+    }
+
+    pub fn get_color(&self, idx: usize) -> egui::Color32 {
+        self.palette.get_color(idx)
+    }
+
+    pub fn palette_len(&self) -> usize {
+        self.palette.palette.len()
     }
 
     pub fn into_tile_state(&self, origin_state: &Option<TileState>) -> Option<TileState> {
