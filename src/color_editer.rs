@@ -74,28 +74,25 @@ pub struct PencilState {
     is_gray: bool,
 }
 
+const PALETTE_X: usize = 6;
+const PALETTE_Y: usize = 4;
 impl PencilState {
     pub fn draw_palette(&mut self, ui: &mut egui::Ui) {
-        use crate::{PALETTE_X, PALETTE_Y, TILE_SIZE, TILE_SIZE_VEC2};
+        use crate::{TILE_SIZE, TILE_SIZE_VEC2};
         use egui::containers::scroll_area::ScrollBarVisibility;
         const SCALE_FACT: f32 = 1.25;
         fn fill_empty(ui: &mut egui::Ui) {
-            let tile_size = TILE_SIZE_VEC2 * SCALE_FACT;
-            for _ in 0..PALETTE_X {
-                let (rect, _) = ui.allocate_exact_size(tile_size, egui::Sense::hover());
-                if ui.is_rect_visible(rect) {
-                    ui.painter().rect_filled(
-                        rect,
-                        egui::Rounding::none(),
-                        egui::Color32::TRANSPARENT,
-                    );
-                }
+            let tile_size = TILE_SIZE * SCALE_FACT;
+            let line_size = egui::vec2(tile_size * PALETTE_X as f32, tile_size);
+            let (rect, _) = ui.allocate_exact_size(line_size, egui::Sense::hover());
+            if ui.is_rect_visible(rect) {
+                ui.painter()
+                    .rect_filled(rect, egui::Rounding::none(), egui::Color32::TRANSPARENT);
             }
-            for i in PALETTE_X..(PALETTE_Y * PALETTE_X) {
-                if i % PALETTE_X == 0 {
-                    ui.end_row()
-                }
-                let (rect, _) = ui.allocate_exact_size(tile_size, egui::Sense::hover());
+
+            for _ in 1..PALETTE_Y {
+                ui.end_row();
+                let (rect, _) = ui.allocate_exact_size(line_size, egui::Sense::hover());
                 if ui.is_rect_visible(rect) {
                     ui.painter().rect_filled(
                         rect,
@@ -192,13 +189,18 @@ impl PencilState {
                             let mut i = 0;
                             let first_line = if need_fill_rest { len } else { PALETTE_X };
                             let stroke = ui.style().visuals.selection.stroke;
+                            let mut delete = Vec::new();
                             while i < first_line {
                                 let c = self.get_color(i);
                                 let res = draw_color(c, ui, stroke, self.fc, self.bc);
                                 if res.clicked() {
-                                    self.do_click_color_action(i);
+                                    if let Some(idx) = self.do_click_color_action(i) {
+                                        delete.push(idx);
+                                    }
                                 } else if res.secondary_clicked() {
-                                    self.do_secondary_click_color_action(i);
+                                    if let Some(idx) = self.do_secondary_click_color_action(i) {
+                                        delete.push(idx);
+                                    }
                                 }
                                 i += 1;
                             }
@@ -209,12 +211,21 @@ impl PencilState {
                                 }
                                 let res = draw_color(c, ui, stroke, self.fc, self.bc);
                                 if res.clicked() {
-                                    self.do_click_color_action(i);
+                                    if let Some(idx) = self.do_click_color_action(i) {
+                                        delete.push(idx);
+                                    }
                                 } else if res.secondary_clicked() {
-                                    self.do_secondary_click_color_action(i);
+                                    if let Some(idx) = self.do_secondary_click_color_action(i) {
+                                        delete.push(idx);
+                                    }
                                 }
                                 i += 1;
                             }
+
+                            for idx in delete {
+                                self.delete_color(idx);
+                            }
+
                             let y = len / PALETTE_X + (if len % PALETTE_X != 0 { 1 } else { 0 });
                             if y < PALETTE_Y {
                                 fill_rest(0, (PALETTE_Y - y) * PALETTE_X, ui);
@@ -249,22 +260,30 @@ impl PencilState {
         }
     }
 
-    pub fn do_click_color_action(&mut self, idx: usize) {
+    pub fn delete_color(&mut self, idx: usize) {
+        self.palette.delete_color(idx);
+    }
+    pub fn do_click_color_action(&mut self, idx: usize) -> Option<usize> {
         if self.palette.editing {
-            self.palette.delete_color(idx);
+            Some(idx)
         } else {
             self.fc = self.palette.get_color(idx);
+            None
         }
     }
 
-    pub fn do_secondary_click_color_action(&mut self, idx: usize) {
+    pub fn do_secondary_click_color_action(&mut self, idx: usize) -> Option<usize> {
         if self.palette.editing {
-            self.palette.delete_color(idx);
+            Some(idx)
         } else {
             self.bc = self.palette.get_color(idx);
+            None
         }
     }
 
+    pub fn write_palette(&self, path: &std::path::Path) -> Result<(), Box<dyn std::error::Error>> {
+        crate::file::write_palette(&self.palette.palette, path)
+    }
     pub fn palette_state_toggle(&mut self, ui: &mut egui::Ui) -> egui::Response {
         ui.toggle_value(&mut self.palette.editing, "删除")
     }

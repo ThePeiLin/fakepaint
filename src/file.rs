@@ -20,3 +20,21 @@ pub fn write_canvas_to_file(u: &impl Serialize, path: &Path) -> Result<(), Box<d
     serde_json::to_writer_pretty(writer, u)?;
     Ok(())
 }
+
+use eframe::egui;
+
+pub fn write_palette(palette: &Vec<egui::Color32>, path: &Path) -> Result<(), Box<dyn Error>> {
+    fn to_serializable_palette(p: &Vec<egui::Color32>) -> Vec<(u8, u8, u8)> {
+        let mut p1 = Vec::new();
+        for c in p {
+            let (r, g, b, _) = c.to_tuple();
+            p1.push((r, g, b));
+        }
+        p1
+    }
+    let palette = to_serializable_palette(palette);
+    let file = File::create(path)?;
+    let writer = BufWriter::new(file);
+    serde_json::to_writer_pretty(writer, &palette)?;
+    Ok(())
+}

@@ -14,8 +14,6 @@ use file::load_canvas_from_file;
 use file::write_canvas_to_file;
 use tile::TileSet;
 
-const PALETTE_X: usize = 8;
-const PALETTE_Y: usize = 4;
 const TILE_SIZE: f32 = 16.0;
 const TILE_SIZE_VEC2: egui::Vec2 = egui::Vec2::splat(16.0);
 
@@ -334,6 +332,7 @@ impl eframe::App for FakePaint {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         egui::SidePanel::left("left_panel")
             .resizable(false)
+            .max_width(0.0)
             .show(ctx, |ui| {
                 self.draw_pencil_state(ui);
                 ui.separator();
@@ -354,7 +353,10 @@ impl eframe::App for FakePaint {
 
     fn on_close_event(&mut self) -> bool {
         let res = write_canvas_to_file(&self.canvas, std::path::Path::new("output.json"));
-        if let Err(_) = res {
+        let res1 = self
+            .pencil_state
+            .write_palette(std::path::Path::new("palette.json"));
+        if let (Err(_), Err(_)) = (res, res1) {
             false
         } else {
             true
