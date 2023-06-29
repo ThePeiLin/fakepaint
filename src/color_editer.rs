@@ -70,11 +70,159 @@ pub struct PencilState {
     state: ColorEditerState,
     old_color: egui::Color32,
     text: String,
-    edting: EditingColor,
+    editing: EditingColor,
     is_gray: bool,
 }
 
 impl PencilState {
+    pub fn draw_palette(&mut self, ui: &mut egui::Ui) {
+        use crate::{PALETTE_X, PALETTE_Y, TILE_SIZE, TILE_SIZE_VEC2};
+        use egui::containers::scroll_area::ScrollBarVisibility;
+        const SCALE_FACT: f32 = 1.25;
+        fn fill_empty(ui: &mut egui::Ui) {
+            let tile_size = TILE_SIZE_VEC2 * SCALE_FACT;
+            for _ in 0..PALETTE_X {
+                let (rect, _) = ui.allocate_exact_size(tile_size, egui::Sense::hover());
+                if ui.is_rect_visible(rect) {
+                    ui.painter().rect_filled(
+                        rect,
+                        egui::Rounding::none(),
+                        egui::Color32::TRANSPARENT,
+                    );
+                }
+            }
+            for i in PALETTE_X..(PALETTE_Y * PALETTE_X) {
+                if i % PALETTE_X == 0 {
+                    ui.end_row()
+                }
+                let (rect, _) = ui.allocate_exact_size(tile_size, egui::Sense::hover());
+                if ui.is_rect_visible(rect) {
+                    ui.painter().rect_filled(
+                        rect,
+                        egui::Rounding::none(),
+                        egui::Color32::TRANSPARENT,
+                    );
+                }
+            }
+        }
+        fn fill_rest(last: usize, rest: usize, ui: &mut egui::Ui) {
+            let tile_size = TILE_SIZE_VEC2 * SCALE_FACT;
+            for i in last..rest + last {
+                if i % PALETTE_X == 0 {
+                    ui.end_row()
+                }
+                let (rect, _) = ui.allocate_exact_size(tile_size, egui::Sense::hover());
+                if ui.is_rect_visible(rect) {
+                    ui.painter().rect_filled(
+                        rect,
+                        egui::Rounding::none(),
+                        egui::Color32::TRANSPARENT,
+                    );
+                }
+            }
+        }
+
+        fn draw_color(
+            color: egui::Color32,
+            ui: &mut egui::Ui,
+            stroke: egui::Stroke,
+            fc: egui::Color32,
+            bc: egui::Color32,
+        ) -> egui::Response {
+            fn compute_color(c: egui::Color32) -> egui::Color32 {
+                const ADD: u16 = 128;
+                let (r, g, b, _) = c.to_tuple();
+                let r = r as u16;
+                let g = g as u16;
+                let b = b as u16;
+                let r = ((r + ADD) % (u8::MAX as u16)) as u8;
+                let g = ((g + ADD) % (u8::MAX as u16)) as u8;
+                let b = ((b + ADD) % (u8::MAX as u16)) as u8;
+                egui::Color32::from_rgb(r, g, b)
+            }
+            let (rect, res) =
+                ui.allocate_exact_size(TILE_SIZE_VEC2 * SCALE_FACT, egui::Sense::click());
+            if ui.is_rect_visible(rect) {
+                ui.painter()
+                    .rect_filled(rect, egui::Rounding::none(), egui::Color32::DARK_GRAY);
+                ui.painter().rect_filled(
+                    crate::get_center_rect(&rect, TILE_SIZE_VEC2),
+                    egui::Rounding::none(),
+                    color,
+                );
+                if res.hovered() {
+                    ui.painter()
+                        .rect_stroke(rect, egui::Rounding::none(), stroke)
+                }
+                if fc == color {
+                    let rect = egui::Rect::from_min_size(rect.min, TILE_SIZE_VEC2 * 0.5);
+                    ui.painter()
+                        .rect_filled(rect, egui::Rounding::none(), compute_color(color));
+                }
+                if bc == color {
+                    let rect = egui::Rect::from_min_max(rect.max - TILE_SIZE_VEC2 * 0.5, rect.max);
+                    ui.painter()
+                        .rect_filled(rect, egui::Rounding::none(), compute_color(color));
+                }
+            }
+            res
+        }
+
+        ui.vertical(|ui| {
+            ui.horizontal(|ui| {
+                ui.heading("调色板");
+                self.palette_state_toggle(ui);
+            });
+            egui::ScrollArea::vertical()
+                .scroll_bar_visibility(ScrollBarVisibility::AlwaysVisible)
+                .show(ui, |ui| {
+                    egui::Grid::new("palette-colors-grid")
+                        .spacing(egui::Vec2::ZERO)
+                        .striped(true)
+                        .num_columns(8)
+                        .min_col_width(TILE_SIZE)
+                        .min_row_height(TILE_SIZE)
+                        .show(ui, |ui| {
+                            let len = self.palette_len();
+                            if len == 0 {
+                                fill_empty(ui);
+                                return;
+                            }
+                            let need_fill_rest = len < PALETTE_X;
+                            let mut i = 0;
+                            let first_line = if need_fill_rest { len } else { PALETTE_X };
+                            let stroke = ui.style().visuals.selection.stroke;
+                            while i < first_line {
+                                let c = self.get_color(i);
+                                let res = draw_color(c, ui, stroke, self.fc, self.bc);
+                                if res.clicked() {
+                                    self.do_click_color_action(i);
+                                } else if res.secondary_clicked() {
+                                    self.do_secondary_click_color_action(i);
+                                }
+                                i += 1;
+                            }
+                            while i < len {
+                                let c = self.get_color(i);
+                                if i % PALETTE_X == 0 {
+                                    ui.end_row();
+                                }
+                                let res = draw_color(c, ui, stroke, self.fc, self.bc);
+                                if res.clicked() {
+                                    self.do_click_color_action(i);
+                                } else if res.secondary_clicked() {
+                                    self.do_secondary_click_color_action(i);
+                                }
+                                i += 1;
+                            }
+                            let y = len / PALETTE_X + (if len % PALETTE_X != 0 { 1 } else { 0 });
+                            if y < PALETTE_Y {
+                                fill_rest(0, (PALETTE_Y - y) * PALETTE_X, ui);
+                            }
+                        });
+                });
+        });
+    }
     pub fn swap_fc_bc(&mut self) {
         std::mem::swap(&mut self.fc, &mut self.bc);
         self.state = ColorEditerState::RGB;
@@ -113,7 +261,7 @@ impl PencilState {
         if self.palette.editing {
             self.palette.delete_color(idx);
         } else {
-            self.fc = self.palette.get_color(idx);
+            self.bc = self.palette.get_color(idx);
         }
     }
 
@@ -158,7 +306,113 @@ impl PencilState {
     }
 
     pub fn color_editer(&mut self, ui: &mut egui::Ui) -> egui::Response {
-        ui.add(ColorEditer::new(self))
+        let (color, other_color) = if self.editing == EditingColor::FORE {
+            (&mut self.fc, self.bc)
+        } else {
+            (&mut self.bc, self.fc)
+        };
+        let res = ui
+            .menu_button("编辑", |ui| {
+                ui.horizontal(|ui| {
+                    show_old_and_new_color(ui, self.old_color, *color);
+                    let res =
+                        ui.add(egui::widgets::TextEdit::singleline(&mut self.text).char_limit(6));
+                    if res.lost_focus() {
+                        if self.text.len() == 6 {
+                            let r = u8::from_str_radix(&self.text[0..2], 16);
+                            let g = u8::from_str_radix(&self.text[2..4], 16);
+                            let b = u8::from_str_radix(&self.text[4..6], 16);
+                            if r.is_ok() && g.is_ok() && b.is_ok() {
+                                *color =
+                                    egui::Color32::from_rgb(r.unwrap(), g.unwrap(), b.unwrap());
+                                update_text(&mut self.text, color);
+                            }
+                        } else if self.text.len() == 3 {
+                            let r = u8::from_str_radix(
+                                &format!("{}{}", &self.text[0..1], &self.text[0..1]),
+                                16,
+                            );
+                            let g = u8::from_str_radix(
+                                &format!("{}{}", &self.text[1..2], &self.text[1..2]),
+                                16,
+                            );
+                            let b = u8::from_str_radix(
+                                &format!("{}{}", &self.text[2..3], &self.text[2..3]),
+                                16,
+                            );
+                            if r.is_ok() && g.is_ok() && b.is_ok() {
+                                *color =
+                                    egui::Color32::from_rgb(r.unwrap(), g.unwrap(), b.unwrap());
+                                update_text(&mut self.text, color);
+                            }
+                        }
+                    }
+                });
+
+                ui.horizontal(|ui| {
+                    ui.set_enabled(!self.is_gray);
+                    if ui
+                        .selectable_label(self.state == ColorEditerState::RGB, "RGB")
+                        .clicked()
+                    {
+                        self.state = ColorEditerState::RGB;
+                    }
+
+                    if ui
+                        .selectable_label(self.state == ColorEditerState::HSV, "HSV")
+                        .clicked()
+                    {
+                        self.state = ColorEditerState::HSV;
+                    }
+
+                    if ui
+                        .selectable_label(self.state == ColorEditerState::HSL, "HSL")
+                        .clicked()
+                    {
+                        self.state = ColorEditerState::HSL;
+                    }
+
+                    if ui.button("＋").on_hover_text("添加到调色板").clicked() {
+                        self.palette.add_color(*color);
+                    }
+
+                    if ui.button("取消").clicked() {
+                        ui.close_menu();
+                        *color = self.old_color;
+                    }
+                });
+                let (r, g, b, _) = color.to_tuple();
+                ui.horizontal(|ui| {
+                    match self.state {
+                        ColorEditerState::RGB => rgb_editer(ui, !self.is_gray, color, r, g, b),
+                        ColorEditerState::HSV => hsv_editer(ui, !self.is_gray, color, r, g, b),
+                        ColorEditerState::HSL => hsl_editer(ui, !self.is_gray, color, r, g, b),
+                    };
+                    ui.vertical(|ui| {
+                        let res = if self.editing == EditingColor::FORE {
+                            ui.selectable_value(&mut self.editing, EditingColor::BACK, "前景色")
+                        } else {
+                            ui.selectable_value(&mut self.editing, EditingColor::FORE, "背景色")
+                        };
+                        if res.changed() {
+                            self.old_color = other_color;
+                        }
+                        if ui.toggle_value(&mut self.is_gray, "GRAY").clicked() {
+                            let (r, g, b, _) = color.to_tuple();
+                            let (r, g, b) = gray_to_rgb(rgb_to_gray(r, g, b));
+                            *color = egui::Color32::from_rgb(r, g, b);
+                        }
+                        ui.set_enabled(self.is_gray);
+                        gray_editer(ui, color, r, g, b);
+                    });
+                });
+            })
+            .response;
+        if res.clicked() {
+            update_text(&mut self.text, color);
+            self.old_color = *color;
+        }
+        res
     }
 }
 
@@ -178,22 +432,11 @@ impl Default for PencilState {
             state: ColorEditerState::RGB,
             old_color: egui::Color32::WHITE,
             text: "".to_string(),
-            edting: EditingColor::FORE,
+            editing: EditingColor::FORE,
             is_gray: false,
             palette: Palette::new(),
         }
     }
-}
-
-struct ColorEditer<'c> {
-    color: &'c mut egui::Color32,
-    other_color: egui::Color32,
-    state: &'c mut ColorEditerState,
-    old_color: &'c mut egui::Color32,
-    text: &'c mut String,
-    editing: &'c mut EditingColor,
-    is_gray: &'c mut bool,
-    palette: &'c mut Palette,
 }
 
 fn rgb_editer(ui: &mut egui::Ui, enabled: bool, color: &mut egui::Color32, r: u8, g: u8, b: u8) {
@@ -241,26 +484,6 @@ fn gray_editer(ui: &mut egui::Ui, color: &mut egui::Color32, r: u8, g: u8, b: u8
     if ui.is_enabled() {
         let (r, g, b) = gray_to_rgb(gray);
         *color = egui::Color32::from_rgb(r, g, b);
-    }
-}
-
-impl<'c> ColorEditer<'c> {
-    pub fn new(pen: &'c mut PencilState) -> Self {
-        let (color, other_color) = if pen.edting == EditingColor::FORE {
-            (&mut pen.fc, pen.bc)
-        } else {
-            (&mut pen.bc, pen.fc)
-        };
-        Self {
-            old_color: &mut pen.old_color,
-            color,
-            other_color,
-            state: &mut pen.state,
-            text: &mut pen.text,
-            editing: &mut pen.edting,
-            is_gray: &mut pen.is_gray,
-            palette: &mut pen.palette,
-        }
     }
 }
 
@@ -388,116 +611,4 @@ fn show_old_and_new_color(ui: &mut egui::Ui, old: egui::Color32, new: egui::Colo
 fn update_text(text: &mut String, color: &egui::Color32) {
     let (r, g, b, _) = color.to_tuple();
     *text = format!("{:02X}{:02X}{:02X}", r, g, b);
-}
-
-impl egui::Widget for ColorEditer<'_> {
-    fn ui(self, ui: &mut egui::Ui) -> egui::Response {
-        let res = ui
-            .menu_button("编辑", |ui| {
-                ui.horizontal(|ui| {
-                    show_old_and_new_color(ui, *self.old_color, *self.color);
-                    let res = ui.add(egui::widgets::TextEdit::singleline(self.text).char_limit(6));
-                    if res.lost_focus() {
-                        if self.text.len() == 6 {
-                            let r = u8::from_str_radix(&self.text[0..2], 16);
-                            let g = u8::from_str_radix(&self.text[2..4], 16);
-                            let b = u8::from_str_radix(&self.text[4..6], 16);
-                            if r.is_ok() && g.is_ok() && b.is_ok() {
-                                *self.color =
-                                    egui::Color32::from_rgb(r.unwrap(), g.unwrap(), b.unwrap());
-                                update_text(self.text, self.color);
-                            }
-                        } else if self.text.len() == 3 {
-                            let r = u8::from_str_radix(
-                                &format!("{}{}", &self.text[0..1], &self.text[0..1]),
-                                16,
-                            );
-                            let g = u8::from_str_radix(
-                                &format!("{}{}", &self.text[1..2], &self.text[1..2]),
-                                16,
-                            );
-                            let b = u8::from_str_radix(
-                                &format!("{}{}", &self.text[2..3], &self.text[2..3]),
-                                16,
-                            );
-                            if r.is_ok() && g.is_ok() && b.is_ok() {
-                                *self.color =
-                                    egui::Color32::from_rgb(r.unwrap(), g.unwrap(), b.unwrap());
-                                update_text(self.text, self.color);
-                            }
-                        }
-                    }
-                });
-
-                ui.horizontal(|ui| {
-                    ui.set_enabled(!*self.is_gray);
-                    if ui
-                        .selectable_label(*self.state == ColorEditerState::RGB, "RGB")
-                        .clicked()
-                    {
-                        *self.state = ColorEditerState::RGB;
-                    }
-
-                    if ui
-                        .selectable_label(*self.state == ColorEditerState::HSV, "HSV")
-                        .clicked()
-                    {
-                        *self.state = ColorEditerState::HSV;
-                    }
-
-                    if ui
-                        .selectable_label(*self.state == ColorEditerState::HSL, "HSL")
-                        .clicked()
-                    {
-                        *self.state = ColorEditerState::HSL;
-                    }
-
-                    if ui.button("＋").on_hover_text("添加到调色板").clicked() {
-                        self.palette.add_color(*self.color);
-                    }
-
-                    if ui.button("取消").clicked() {
-                        ui.close_menu();
-                        *self.color = *self.old_color;
-                    }
-                });
-                let (r, g, b, _) = self.color.to_tuple();
-                ui.horizontal(|ui| {
-                    match *self.state {
-                        ColorEditerState::RGB => {
-                            rgb_editer(ui, !*self.is_gray, self.color, r, g, b)
-                        }
-                        ColorEditerState::HSV => {
-                            hsv_editer(ui, !*self.is_gray, self.color, r, g, b)
-                        }
-                        ColorEditerState::HSL => {
-                            hsl_editer(ui, !*self.is_gray, self.color, r, g, b)
-                        }
-                    };
-                    ui.vertical(|ui| {
-                        let res = if *self.editing == EditingColor::FORE {
-                            ui.selectable_value(self.editing, EditingColor::BACK, "前景色")
-                        } else {
-                            ui.selectable_value(self.editing, EditingColor::FORE, "背景色")
-                        };
-                        if res.changed() {
-                            *self.old_color = self.other_color;
-                        }
-                        if ui.toggle_value(self.is_gray, "GRAY").clicked() {
-                            let (r, g, b, _) = self.color.to_tuple();
-                            let (r, g, b) = gray_to_rgb(rgb_to_gray(r, g, b));
-                            *self.color = egui::Color32::from_rgb(r, g, b);
-                        }
-                        ui.set_enabled(*self.is_gray);
-                        gray_editer(ui, self.color, r, g, b);
-                    });
-                });
-            })
-            .response;
-        if res.clicked() {
-            update_text(self.text, self.color);
-            *self.old_color = *self.color;
-        }
-        res
-    }
 }
