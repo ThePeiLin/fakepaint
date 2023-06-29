@@ -77,7 +77,7 @@ impl FakePaint {
         setup::custom_fonts(&cc.egui_ctx);
         cc.egui_ctx.set_visuals(egui::Visuals::dark());
         let canvas: Canvas;
-        if let Ok(cc) = load_canvas_from_file(std::path::Path::new("output.json")) {
+        if let Ok(cc) = load_canvas_from_file(std::path::Path::new("canvas.json")) {
             canvas = cc;
         } else {
             let size_x: usize = 16;
@@ -332,7 +332,6 @@ impl eframe::App for FakePaint {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         egui::SidePanel::left("left_panel")
             .resizable(false)
-            .max_width(0.0)
             .show(ctx, |ui| {
                 self.draw_pencil_state(ui);
                 ui.separator();
@@ -352,7 +351,7 @@ impl eframe::App for FakePaint {
     }
 
     fn on_close_event(&mut self) -> bool {
-        let res = write_canvas_to_file(&self.canvas, std::path::Path::new("output.json"));
+        let res = write_canvas_to_file(&self.canvas, std::path::Path::new("canvas.json"));
         let res1 = self
             .pencil_state
             .write_palette(std::path::Path::new("palette.json"));

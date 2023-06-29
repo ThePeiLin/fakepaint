@@ -38,3 +38,17 @@ pub fn write_palette(palette: &Vec<egui::Color32>, path: &Path) -> Result<(), Bo
     serde_json::to_writer_pretty(writer, &palette)?;
     Ok(())
 }
+
+pub fn load_palette(path: &Path) -> Result<Vec<egui::Color32>, Box<dyn Error>> {
+    fn to_color_vec(vec: Vec<(u8, u8, u8)>) -> Vec<egui::Color32> {
+        let mut p = Vec::with_capacity(vec.len());
+        for (r, g, b) in vec {
+            p.push(egui::Color32::from_rgb(r, g, b));
+        }
+        p
+    }
+    let file = File::open(path)?;
+    let reader = BufReader::new(file);
+    let palette: Vec<(u8, u8, u8)> = serde_json::from_reader(reader)?;
+    Ok(to_color_vec(palette))
+}

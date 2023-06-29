@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::canvas::TileState;
+use crate::{canvas::TileState, file::load_palette};
 use eframe::egui;
 use palette::FromColor;
 
@@ -47,7 +47,12 @@ impl Palette {
         self.color_index_hash_map.contains_key(&color)
     }
     pub fn new() -> Self {
-        let palette = vec![egui::Color32::BLACK, egui::Color32::WHITE];
+        let palette;
+        if let Ok(pal) = load_palette(std::path::Path::new("palette.json")) {
+            palette = pal
+        } else {
+            palette = vec![egui::Color32::WHITE, egui::Color32::BLACK];
+        }
         let mut color_index_hash_map = HashMap::with_capacity(palette.len());
         for (i, c) in palette.iter().enumerate() {
             color_index_hash_map.insert(*c, i);
@@ -81,29 +86,22 @@ impl PencilState {
         use crate::{TILE_SIZE, TILE_SIZE_VEC2};
         use egui::containers::scroll_area::ScrollBarVisibility;
         const SCALE_FACT: f32 = 1.25;
-        fn fill_empty(ui: &mut egui::Ui) {
-            let tile_size = TILE_SIZE * SCALE_FACT;
-            let line_size = egui::vec2(tile_size * PALETTE_X as f32, tile_size);
-            let (rect, _) = ui.allocate_exact_size(line_size, egui::Sense::hover());
-            if ui.is_rect_visible(rect) {
-                ui.painter()
-                    .rect_filled(rect, egui::Rounding::none(), egui::Color32::TRANSPARENT);
-            }
-
-            for _ in 1..PALETTE_Y {
-                ui.end_row();
-                let (rect, _) = ui.allocate_exact_size(line_size, egui::Sense::hover());
-                if ui.is_rect_visible(rect) {
-                    ui.painter().rect_filled(
-                        rect,
-                        egui::Rounding::none(),
-                        egui::Color32::TRANSPARENT,
-                    );
-                }
-            }
-        }
-        fn fill_rest(last: usize, rest: usize, ui: &mut egui::Ui) {
+        fn fill_rest(mut last: usize, mut rest: usize, ui: &mut egui::Ui) {
             let tile_size = TILE_SIZE_VEC2 * SCALE_FACT;
+            if last == 0 {
+                for _ in last..PALETTE_X {
+                    let (rect, _) = ui.allocate_exact_size(tile_size, egui::Sense::hover());
+                    if ui.is_rect_visible(rect) {
+                        ui.painter().rect_filled(
+                            rect,
+                            egui::Rounding::none(),
+                            egui::Color32::TRANSPARENT,
+                        );
+                    }
+                }
+                last = PALETTE_X;
+                rest -= PALETTE_X;
+            }
             for i in last..rest + last {
                 if i % PALETTE_X == 0 {
                     ui.end_row()
@@ -181,10 +179,6 @@ impl PencilState {
                         .min_row_height(TILE_SIZE)
                         .show(ui, |ui| {
                             let len = self.palette_len();
-                            if len == 0 {
-                                fill_empty(ui);
-                                return;
-                            }
                             let need_fill_rest = len < PALETTE_X;
                             let mut i = 0;
                             let first_line = if need_fill_rest { len } else { PALETTE_X };
@@ -226,9 +220,14 @@ impl PencilState {
                                 self.delete_color(idx);
                             }
 
-                            let y = len / PALETTE_X + (if len % PALETTE_X != 0 { 1 } else { 0 });
+                            let y = len / PALETTE_X + 1;
                             if y < PALETTE_Y {
-                                fill_rest(0, (PALETTE_Y - y) * PALETTE_X, ui);
+                                let last_x = len % PALETTE_X;
+                                fill_rest(
+                                    last_x,
+                                    (PALETTE_X - last_x) + (PALETTE_Y - y) * PALETTE_X,
+                                    ui,
+                                );
                             }
                         });
                 });
@@ -437,11 +436,6 @@ impl PencilState {
 
 impl Default for PencilState {
     fn default() -> Self {
-        let palette = vec![egui::Color32::BLACK, egui::Color32::WHITE];
-        let mut color_index_hash_map = HashMap::with_capacity(palette.len());
-        for (i, c) in palette.iter().enumerate() {
-            color_index_hash_map.insert(*c, i);
-        }
         Self {
             idx: 0,
             fc: egui::Color32::WHITE,
