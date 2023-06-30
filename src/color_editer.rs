@@ -82,13 +82,17 @@ pub struct PencilState {
 const PALETTE_X: usize = 6;
 const PALETTE_Y: usize = 4;
 impl PencilState {
+    pub fn palette_vec_ref(&self) -> &Vec<egui::Color32> {
+        &self.palette.palette
+    }
     pub fn draw_palette(&mut self, ui: &mut egui::Ui) {
         use crate::{TILE_SIZE, TILE_SIZE_VEC2};
         use egui::containers::scroll_area::ScrollBarVisibility;
         const SCALE_FACT: f32 = 1.25;
         fn fill_rest(mut last: usize, mut rest: usize, ui: &mut egui::Ui) {
+            const DEFAULT_PALETTE_GRID_SIZE: usize = PALETTE_X * PALETTE_Y;
             let tile_size = TILE_SIZE_VEC2 * SCALE_FACT;
-            if last == 0 {
+            if last == 0 && rest == DEFAULT_PALETTE_GRID_SIZE {
                 for _ in last..PALETTE_X {
                     let (rect, _) = ui.allocate_exact_size(tile_size, egui::Sense::hover());
                     if ui.is_rect_visible(rect) {
@@ -220,12 +224,12 @@ impl PencilState {
                                 self.delete_color(idx);
                             }
 
-                            let y = len / PALETTE_X + 1;
+                            let y = len / PALETTE_X;
                             if y < PALETTE_Y {
                                 let last_x = len % PALETTE_X;
                                 fill_rest(
                                     last_x,
-                                    (PALETTE_X - last_x) + (PALETTE_Y - y) * PALETTE_X,
+                                    (PALETTE_X - last_x) + (PALETTE_Y - 1 - y) * PALETTE_X,
                                     ui,
                                 );
                             }
@@ -280,9 +284,6 @@ impl PencilState {
         }
     }
 
-    pub fn write_palette(&self, path: &std::path::Path) -> Result<(), Box<dyn std::error::Error>> {
-        crate::file::write_palette(&self.palette.palette, path)
-    }
     pub fn palette_state_toggle(&mut self, ui: &mut egui::Ui) -> egui::Response {
         ui.toggle_value(&mut self.palette.editing, "删除")
     }

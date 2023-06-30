@@ -11,7 +11,7 @@ use canvas::Canvas;
 use color_editer::PencilState;
 use eframe::egui;
 use file::load_canvas_from_file;
-use file::write_canvas_to_file;
+use file::write_canvas_and_palette;
 use tile::TileSet;
 
 const TILE_SIZE: f32 = 16.0;
@@ -351,11 +351,14 @@ impl eframe::App for FakePaint {
     }
 
     fn on_close_event(&mut self) -> bool {
-        let res = write_canvas_to_file(&self.canvas, std::path::Path::new("canvas.json"));
-        let res1 = self
-            .pencil_state
-            .write_palette(std::path::Path::new("palette.json"));
-        if let (Err(_), Err(_)) = (res, res1) {
+        use std::path::Path;
+        let res = write_canvas_and_palette(
+            &self.canvas,
+            self.pencil_state.palette_vec_ref(),
+            Path::new("canvas.json"),
+            Path::new("palette.json"),
+        );
+        if let Err(_) = res {
             false
         } else {
             true
