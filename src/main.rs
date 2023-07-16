@@ -65,8 +65,8 @@ fn compute_grid_rect(rect: egui::Rect, grid_size: egui::Vec2, x: usize, y: usize
     } = rect.left_top();
     egui::Rect::from_min_size(
         egui::pos2(
-            left_top_x + grid_size.x * x as f32,
-            left_top_y + grid_size.y * y as f32,
+            (left_top_x + grid_size.x * x as f32).floor(),
+            (left_top_y + grid_size.y * y as f32).floor(),
         ),
         grid_size,
     )
