@@ -10,8 +10,7 @@ mod tile;
 use canvas::Canvas;
 use color_editer::PencilState;
 use eframe::egui;
-use file::load_canvas_from_file;
-use file::write_canvas_and_palette;
+use file::{load_canvas_from_file, write_canvas_to_file};
 use tile::TileSet;
 
 const TILE_SIZE: f32 = 16.0;
@@ -35,6 +34,7 @@ struct FakePaint {
     pencil_state: PencilState,
     canvas: Canvas,
     cur_cell: Option<canvas::TileState>,
+    editing_file_path: Option<String>,
 }
 
 fn get_center_rect(rect: &egui::Rect, size: egui::Vec2) -> egui::Rect {
@@ -74,30 +74,62 @@ fn compute_grid_rect(rect: egui::Rect, grid_size: egui::Vec2, x: usize, y: usize
 
 impl FakePaint {
     fn new(cc: &eframe::CreationContext<'_>) -> Self {
+        use color_editer::StoragePen;
+        let pen: StoragePen;
+        let canvas: Canvas;
+        let palette: Vec<egui::Color32>;
+        let mut editing_file_path: Option<String>;
+
+        if let Some(storage) = cc.storage {
+            pen = serde_json::from_str(&storage.get_string("pen").unwrap_or_else(|| String::new()))
+                .unwrap_or_else(|_| StoragePen::default());
+            palette = serde_json::from_str(
+                &storage
+                    .get_string("palette")
+                    .unwrap_or_else(|| String::new()),
+            )
+            .unwrap_or_else(|_| vec![egui::Color32::WHITE, egui::Color32::BLACK]);
+            editing_file_path = serde_json::from_str(
+                &storage
+                    .get_string("editing_file_path")
+                    .unwrap_or_else(|| String::new()),
+            )
+            .unwrap_or_else(|_| None);
+
+            if let Some(path) = editing_file_path.clone() {
+                if let Ok(cc) = load_canvas_from_file(&std::path::Path::new(&path)) {
+                    canvas = cc;
+                } else {
+                    canvas = Canvas::default();
+                    editing_file_path = None;
+                }
+            } else {
+                canvas = serde_json::from_str(
+                    &storage
+                        .get_string("canvas")
+                        .unwrap_or_else(|| String::new()),
+                )
+                .unwrap_or_else(|_| Canvas::default());
+            }
+        } else {
+            pen = StoragePen::default();
+            canvas = Canvas::default();
+            palette = vec![egui::Color32::WHITE, egui::Color32::BLACK];
+            editing_file_path = None;
+        }
+
         setup::custom_fonts(&cc.egui_ctx);
         cc.egui_ctx.set_visuals(egui::Visuals::dark());
-        let canvas: Canvas;
-        if let Ok(cc) = load_canvas_from_file(std::path::Path::new("canvas.json")) {
-            canvas = cc;
-        } else {
-            let size_x: usize = 16;
-            let size_y: usize = 16;
-            let size = size_x * size_x;
-            let mut cells = Vec::with_capacity(size);
-            cells.resize(size, None);
-            canvas = Canvas {
-                cells,
-                size_x,
-                size_y,
-            }
-        }
         let (tex_handle, image_data) = tile::load_texture(&cc.egui_ctx);
-        Self {
+        let mut r = Self {
             tile: TileSet::new(image_data, tex_handle.unwrap(), 16, 16, TILE_SIZE_VEC2),
-            pencil_state: PencilState::default(),
+            pencil_state: PencilState::from(pen),
             canvas,
             cur_cell: None,
-        }
+            editing_file_path,
+        };
+        r.pencil_state.palette = color_editer::Palette::from(palette);
+        r
     }
 
     fn draw_pencil_state(&self, ui: &mut egui::Ui) {
@@ -248,9 +280,22 @@ impl FakePaint {
         });
     }
 
-    fn current_cell_info(&self, ui: &mut egui::Ui) {
+    fn current_canvas_info(&self, ui: &mut egui::Ui) {
         ui.heading("信息");
         egui::Grid::new("info-grid").show(ui, |ui| {
+            ui.label("文件：");
+            if let Some(string) = &self.editing_file_path {
+                let string = std::path::Path::new(string)
+                    .file_stem()
+                    .unwrap_or_else(|| &std::ffi::OsStr::new(""))
+                    .to_string_lossy();
+                if string.len() > 25 {
+                    ui.label(format!("{:.25}...", string));
+                } else {
+                    ui.label(string);
+                }
+            }
+            ui.end_row();
             ui.label("画布尺寸：");
             ui.label(format!("{}x{}", self.canvas.size_x, self.canvas.size_y));
             ui.end_row();
@@ -322,6 +367,7 @@ impl FakePaint {
                 }
             });
     }
+
     fn export_canvas(&self) {
         if let Some(path) = rfd::FileDialog::new()
             .add_filter("png", &["png"])
@@ -395,49 +441,99 @@ impl eframe::App for FakePaint {
                             .add_filter("json", &["json"])
                             .pick_file()
                         {
-                            println!("{:?}", path);
+                            if let Ok(cc) = load_canvas_from_file(std::path::Path::new(&path)) {
+                                self.canvas = cc;
+                                if let Some(string) = path.to_str() {
+                                    self.editing_file_path = Some(string.to_string());
+                                }
+                            }
+                            // else {
+                            //     rfd::MessageDialog::new()
+                            //         .set_description("加载错误")
+                            //         .show();
+                            // }
                         }
+                        ui.close_menu();
+                    }
+                    if ui.button("新建").clicked() {
+                        self.canvas = Canvas::default();
+                        self.editing_file_path = None;
+                        ui.close_menu();
+                    }
+                    if ui.button("保存").clicked() {
+                        if let Some(path) = &self.editing_file_path {
+                            let _ = write_canvas_to_file(&self.canvas, &std::path::Path::new(path));
+                        } else {
+                            if let Some(path) = rfd::FileDialog::new()
+                                .set_title("保存")
+                                .add_filter("json", &["json"])
+                                .save_file()
+                            {
+                                let _ = write_canvas_to_file(&self.canvas, &path);
+                                if let Some(string) = path.to_str() {
+                                    self.editing_file_path = Some(string.to_string());
+                                }
+                            }
+                        }
+                        ui.close_menu();
+                    }
+                    if ui.button("保存为").clicked() {
+                        if let Some(path) = rfd::FileDialog::new()
+                            .set_title("保存")
+                            .add_filter("json", &["json"])
+                            .save_file()
+                        {
+                            let _ = write_canvas_to_file(&self.canvas, &path);
+                            if let Some(string) = path.to_str() {
+                                self.editing_file_path = Some(string.to_string());
+                            }
+                        }
+                        ui.close_menu();
                     }
                     if ui.button("导出").clicked() {
                         self.export_canvas();
+                        ui.close_menu();
                     }
                 });
-                ui.menu_button("编辑", |ui| {});
+                // ui.menu_button("编辑", |ui| {});
             });
         });
 
-        egui::SidePanel::left("left_panel")
-            .resizable(false)
-            .show(ctx, |ui| {
-                self.draw_pencil_state(ui);
+        egui::SidePanel::left("left_panel").show(ctx, |ui| {
+            self.draw_pencil_state(ui);
+            // ui.separator();
+            self.char_selector(ui);
+            ui.separator();
+            ui.horizontal(|ui| {
+                self.draw_palette(ui);
                 ui.separator();
-                self.char_selector(ui);
-                ui.separator();
-                ui.horizontal(|ui| {
-                    self.draw_palette(ui);
-                    ui.separator();
-                    self.draw_pencil_colors(ui);
-                });
-                ui.separator();
-                self.current_cell_info(ui);
+                self.draw_pencil_colors(ui);
             });
+            ui.separator();
+            self.current_canvas_info(ui);
+        });
         egui::CentralPanel::default().show(ctx, |ui| {
             self.draw_canvas(ui);
         });
     }
 
-    fn on_close_event(&mut self) -> bool {
-        use std::path::Path;
-        let res = write_canvas_and_palette(
-            &self.canvas,
-            self.pencil_state.palette_vec_ref(),
-            Path::new("canvas.json"),
-            Path::new("palette.json"),
-        );
-        if let Err(_) = res {
-            false
-        } else {
-            true
+    fn save(&mut self, storage: &mut dyn eframe::Storage) {
+        if let Ok(string) =
+            serde_json::to_string(&color_editer::StoragePen::from(&self.pencil_state))
+        {
+            storage.set_string("pen", string);
+        }
+
+        if let Ok(string) = serde_json::to_string(&self.canvas) {
+            storage.set_string("canvas", string);
+        }
+
+        if let Ok(string) = serde_json::to_string(self.pencil_state.palette_vec_ref()) {
+            storage.set_string("palette", string);
+        }
+
+        if let Ok(string) = serde_json::to_string(&self.editing_file_path) {
+            storage.set_string("editing_file_path", string);
         }
     }
 }

@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::{canvas::TileState, file::load_palette};
+use crate::canvas::TileState;
 use eframe::egui;
 use palette::FromColor;
 
@@ -46,13 +46,28 @@ impl Palette {
     pub fn contains_color(&self, color: egui::Color32) -> bool {
         self.color_index_hash_map.contains_key(&color)
     }
-    pub fn new() -> Self {
-        let palette;
-        if let Ok(pal) = load_palette(std::path::Path::new("palette.json")) {
-            palette = pal
-        } else {
-            palette = vec![egui::Color32::WHITE, egui::Color32::BLACK];
-        }
+    // pub fn new() -> Self {
+    //     let palette;
+    //     if let Ok(pal) = load_palette(std::path::Path::new("palette.json")) {
+    //         palette = pal
+    //     } else {
+    //         palette = vec![egui::Color32::WHITE, egui::Color32::BLACK];
+    //     }
+    //     let mut color_index_hash_map = HashMap::with_capacity(palette.len());
+    //     for (i, c) in palette.iter().enumerate() {
+    //         color_index_hash_map.insert(*c, i);
+    //     }
+    //     Self {
+    //         palette,
+    //         color_index_hash_map,
+    //         editing: false,
+    //     }
+    // }
+}
+
+impl Default for Palette {
+    fn default() -> Self {
+        let palette = vec![egui::Color32::WHITE, egui::Color32::BLACK];
         let mut color_index_hash_map = HashMap::with_capacity(palette.len());
         for (i, c) in palette.iter().enumerate() {
             color_index_hash_map.insert(*c, i);
@@ -61,6 +76,24 @@ impl Palette {
             palette,
             color_index_hash_map,
             editing: false,
+        }
+    }
+}
+
+use serde::{Deserialize, Serialize};
+#[derive(Serialize, Deserialize)]
+pub struct StoragePen {
+    idx: usize,
+    fc: [u8; 3],
+    bc: [u8; 3],
+}
+
+impl Default for StoragePen {
+    fn default() -> Self {
+        StoragePen {
+            idx: 0,
+            fc: [255, 255, 255],
+            bc: [0, 0, 0],
         }
     }
 }
@@ -81,6 +114,41 @@ pub struct PencilState {
 
 const PALETTE_X: usize = 6;
 const PALETTE_Y: usize = 4;
+
+impl From<StoragePen> for PencilState {
+    fn from(value: StoragePen) -> Self {
+        let mut r = Self::default();
+        r.idx = value.idx;
+        r.fc = egui::Color32::from_rgb(value.fc[0], value.fc[1], value.fc[2]);
+        r.bc = egui::Color32::from_rgb(value.bc[0], value.bc[1], value.bc[2]);
+        r
+    }
+}
+
+impl From<&PencilState> for StoragePen {
+    fn from(value: &PencilState) -> Self {
+        let fc = value.fc.to_opaque();
+        let bc = value.bc.to_opaque();
+        Self {
+            idx: value.idx,
+            fc: [fc.r(), fc.g(), fc.b()],
+            bc: [bc.r(), bc.g(), bc.b()],
+        }
+    }
+}
+
+impl From<PencilState> for StoragePen {
+    fn from(value: PencilState) -> Self {
+        let fc = value.fc.to_opaque();
+        let bc = value.bc.to_opaque();
+        Self {
+            idx: value.idx,
+            fc: [fc.r(), fc.g(), fc.b()],
+            bc: [bc.r(), bc.g(), bc.b()],
+        }
+    }
+}
+
 impl PencilState {
     pub fn palette_vec_ref(&self) -> &Vec<egui::Color32> {
         &self.palette.palette
@@ -435,6 +503,34 @@ impl PencilState {
     }
 }
 
+impl From<Vec<egui::Color32>> for Palette {
+    fn from(value: Vec<egui::Color32>) -> Self {
+        let mut color_index_hash_map = HashMap::with_capacity(value.len());
+        for (i, c) in value.iter().enumerate() {
+            color_index_hash_map.insert(*c, i);
+        }
+        Self {
+            palette: value,
+            color_index_hash_map,
+            editing: false,
+        }
+    }
+}
+
+impl From<&Vec<egui::Color32>> for Palette {
+    fn from(value: &Vec<egui::Color32>) -> Self {
+        let mut color_index_hash_map = HashMap::with_capacity(value.len());
+        for (i, c) in value.iter().enumerate() {
+            color_index_hash_map.insert(*c, i);
+        }
+        Self {
+            palette: value.clone(),
+            color_index_hash_map,
+            editing: false,
+        }
+    }
+}
+
 impl Default for PencilState {
     fn default() -> Self {
         Self {
@@ -448,7 +544,7 @@ impl Default for PencilState {
             text: "".to_string(),
             editing: EditingColor::FORE,
             is_gray: false,
-            palette: Palette::new(),
+            palette: Palette::default(),
         }
     }
 }

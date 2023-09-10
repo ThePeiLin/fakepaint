@@ -68,6 +68,21 @@ pub struct Canvas {
     pub cells: Vec<Option<TileState>>,
 }
 
+impl Default for Canvas {
+    fn default() -> Self {
+        let size_x: usize = 16;
+        let size_y: usize = 16;
+        let size = size_x * size_x;
+        let mut cells = Vec::with_capacity(size);
+        cells.resize(size, None);
+        Self {
+            cells,
+            size_x,
+            size_y,
+        }
+    }
+}
+
 impl Canvas {
     pub fn get_cell_mut(&mut self, x: usize, y: usize) -> &mut Option<TileState> {
         &mut self.cells[y * self.size_x + x]
