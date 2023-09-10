@@ -1,6 +1,7 @@
 use eframe::egui;
 
 pub struct TileSet {
+    pub image_data: image::DynamicImage,
     pub tex: egui::TextureHandle,
     uv: Vec<egui::Rect>,
     pub columns: usize,
@@ -8,35 +9,34 @@ pub struct TileSet {
     pub tile_size: egui::Vec2,
 }
 
-fn load_image_from_path(path: &std::path::Path) -> Result<egui::ColorImage, image::ImageError> {
+fn load_image_from_path(
+    path: &std::path::Path,
+) -> Result<(egui::ColorImage, image::DynamicImage), image::ImageError> {
     let image = image::io::Reader::open(path)?.decode()?;
     let size = [image.width() as _, image.height() as _];
     let img_buf = image.to_rgba8();
     let pixels = img_buf.as_flat_samples();
-    Ok(egui::ColorImage::from_rgba_unmultiplied(
-        size,
-        pixels.as_slice(),
+    Ok((
+        egui::ColorImage::from_rgba_unmultiplied(size, pixels.as_slice()),
+        image,
     ))
 }
 
-pub fn load_texture(ctx: &egui::Context) -> Option<egui::TextureHandle> {
+pub fn load_texture(ctx: &egui::Context) -> (Option<egui::TextureHandle>, image::DynamicImage) {
     let mut ascii: Option<egui::TextureHandle> = None;
     let tex_opt = egui::TextureOptions {
         magnification: egui::TextureFilter::Nearest,
         minification: egui::TextureFilter::Nearest,
     };
-    ascii.get_or_insert_with(|| {
-        ctx.load_texture(
-            "16x16_sm_ascii",
-            load_image_from_path(std::path::Path::new("assets/16x16_sm_ascii.png")).unwrap(),
-            tex_opt,
-        )
-    });
-    ascii
+    let (color_image, image) =
+        load_image_from_path(std::path::Path::new("assets/16x16_sm_ascii.png")).unwrap();
+    ascii.get_or_insert_with(|| ctx.load_texture("16x16_sm_ascii", color_image, tex_opt));
+    (ascii, image)
 }
 
 impl TileSet {
     pub fn new(
+        image_data: image::DynamicImage,
         tex: egui::TextureHandle,
         columns: usize,
         rows: usize,
@@ -56,6 +56,7 @@ impl TileSet {
             }
         }
         Self {
+            image_data,
             tex,
             uv,
             columns,

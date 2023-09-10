@@ -91,13 +91,9 @@ impl FakePaint {
                 size_y,
             }
         }
+        let (tex_handle, image_data) = tile::load_texture(&cc.egui_ctx);
         Self {
-            tile: TileSet::new(
-                tile::load_texture(&cc.egui_ctx).unwrap(),
-                16,
-                16,
-                TILE_SIZE_VEC2,
-            ),
+            tile: TileSet::new(image_data, tex_handle.unwrap(), 16, 16, TILE_SIZE_VEC2),
             pencil_state: PencilState::default(),
             canvas,
             cur_cell: None,
@@ -326,10 +322,90 @@ impl FakePaint {
                 }
             });
     }
+    fn export_canvas(&self) {
+        if let Some(path) = rfd::FileDialog::new()
+            .add_filter("png", &["png"])
+            .set_title("导出为图片")
+            .save_file()
+        {
+            use image::{GenericImageView, ImageBuffer, RgbaImage};
+            let tile_image = &self.tile.image_data;
+            let mut img: RgbaImage = ImageBuffer::new(
+                self.canvas.size_x as u32 * TILE_SIZE as u32,
+                self.canvas.size_y as u32 * TILE_SIZE as u32,
+            );
+            for y in 0..self.canvas.size_y {
+                for x in 0..self.canvas.size_x {
+                    let cur = self.canvas.cells[x + y * self.canvas.size_x].clone();
+                    if let Some(tile) = cur {
+                        let uv = self.tile.uv(tile.idx).left_top();
+                        let mut tile_sub_img = tile_image
+                            .view(
+                                (uv.x * tile_image.width() as f32) as u32,
+                                (uv.y * tile_image.height() as f32) as u32,
+                                TILE_SIZE_VEC2.x as u32,
+                                TILE_SIZE_VEC2.y as u32,
+                            )
+                            .to_image();
+
+                        let target_x = x as u32 * TILE_SIZE_VEC2.x as u32;
+                        let target_y = y as u32 * TILE_SIZE_VEC2.y as u32;
+
+                        let target_rect =
+                            imageproc::rect::Rect::at(target_x as i32, target_y as i32)
+                                .of_size(TILE_SIZE_VEC2.x as u32, TILE_SIZE_VEC2.y as u32);
+
+                        let bc = image::Rgba(tile.bc.to_array());
+
+                        let fc = tile.fc.to_normalized_gamma_f32();
+
+                        tile_sub_img.pixels_mut().for_each(|cur| {
+                            *cur = image::Rgba([
+                                (cur.0[0] as f32 * fc[0]) as u8,
+                                (cur.0[1] as f32 * fc[1]) as u8,
+                                (cur.0[2] as f32 * fc[2]) as u8,
+                                (cur.0[3] as f32 * fc[3]) as u8,
+                            ]);
+                        });
+
+                        imageproc::drawing::draw_filled_rect_mut(&mut img, target_rect, bc);
+                        image::imageops::overlay(
+                            &mut img,
+                            &tile_sub_img,
+                            target_x.into(),
+                            target_y.into(),
+                        );
+                    }
+                }
+            }
+
+            img.save(path).unwrap();
+        }
+    }
 }
 
 impl eframe::App for FakePaint {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        egui::TopBottomPanel::new(egui::panel::TopBottomSide::Top, "top_panel").show(ctx, |ui| {
+            ui.horizontal(|ui| {
+                ui.menu_button("文件", |ui| {
+                    if ui.button("打开").clicked() {
+                        if let Some(path) = rfd::FileDialog::new()
+                            .set_title("选择json")
+                            .add_filter("json", &["json"])
+                            .pick_file()
+                        {
+                            println!("{:?}", path);
+                        }
+                    }
+                    if ui.button("导出").clicked() {
+                        self.export_canvas();
+                    }
+                });
+                ui.menu_button("编辑", |ui| {});
+            });
+        });
+
         egui::SidePanel::left("left_panel")
             .resizable(false)
             .show(ctx, |ui| {
