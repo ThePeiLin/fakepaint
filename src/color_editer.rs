@@ -4,6 +4,8 @@ use crate::canvas::TileState;
 use eframe::egui;
 use palette::FromColor;
 
+use rust_i18n::t;
+
 #[derive(PartialEq)]
 enum ColorEditerState {
     RGB,
@@ -220,7 +222,7 @@ impl PencilState {
 
         ui.vertical(|ui| {
             ui.horizontal(|ui| {
-                ui.heading("调色板");
+                ui.heading(t!("palette"));
                 self.palette_state_toggle(ui);
             });
             egui::ScrollArea::vertical()
@@ -336,7 +338,7 @@ impl PencilState {
     }
 
     pub fn palette_state_toggle(&mut self, ui: &mut egui::Ui) -> egui::Response {
-        ui.toggle_value(&mut self.palette.editing, "删除")
+        ui.toggle_value(&mut self.palette.editing, t!("delete"))
     }
 
     pub fn get_color(&self, idx: usize) -> egui::Color32 {
@@ -360,11 +362,17 @@ impl PencilState {
     }
 
     pub fn fore_color_checkbox(&mut self, ui: &mut egui::Ui) -> egui::Response {
-        ui.checkbox(&mut self.fc_activate, "前景色：")
+        ui.checkbox(
+            &mut self.fc_activate,
+            format!("{}: ", t!("foreground_color")),
+        )
     }
 
     pub fn back_color_checkbox(&mut self, ui: &mut egui::Ui) -> egui::Response {
-        ui.checkbox(&mut self.bc_activate, "背景色：")
+        ui.checkbox(
+            &mut self.bc_activate,
+            format!("{}: ", t!("background_color")),
+        )
     }
 
     pub fn swap_color_and_into(&self) -> Option<TileState> {
@@ -382,7 +390,7 @@ impl PencilState {
             (&mut self.bc, self.fc)
         };
         let res = ui
-            .menu_button("编辑", |ui| {
+            .menu_button(t!("edit"), |ui| {
                 ui.horizontal(|ui| {
                     show_old_and_new_color(ui, self.old_color, *color);
                     let res =

@@ -19,4 +19,5 @@ imageproc="*"
 serde_json = "1.0"
 serde = "1.0"
 palette = "0.7"
+rust-i18n="2"
 rfd={version="*",default-features=false,features=["xdg-portal"]}

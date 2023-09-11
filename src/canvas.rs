@@ -1,6 +1,8 @@
 use eframe::egui;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
+use crate::tile::TileSet;
+
 #[derive(Copy, Clone, Serialize, Deserialize, PartialEq, Eq, Debug)]
 pub struct TileState {
     pub idx: usize,
@@ -75,6 +77,74 @@ impl Default for Canvas {
 }
 
 impl Canvas {
+    pub fn export_as_image(&self, tile: &TileSet, path: &str, scale: u32) {
+        use crate::TILE_SIZE;
+        use crate::TILE_SIZE_VEC2;
+
+        use image::{GenericImageView, ImageBuffer, RgbaImage};
+        let tile_image = &tile.image_data;
+        let mut img: RgbaImage = ImageBuffer::new(
+            self.width as u32 * TILE_SIZE as u32,
+            self.height as u32 * TILE_SIZE as u32,
+        );
+        for y in 0..self.height {
+            for x in 0..self.width {
+                let cur = self.cells[x + y * self.width].clone();
+                if let Some(cur_tile) = cur {
+                    let uv = tile.uv(cur_tile.idx).left_top();
+                    let mut tile_sub_img = tile_image
+                        .view(
+                            (uv.x * tile_image.width() as f32) as u32,
+                            (uv.y * tile_image.height() as f32) as u32,
+                            TILE_SIZE_VEC2.x as u32,
+                            TILE_SIZE_VEC2.y as u32,
+                        )
+                        .to_image();
+
+                    let target_x = x as u32 * TILE_SIZE_VEC2.x as u32;
+                    let target_y = y as u32 * TILE_SIZE_VEC2.y as u32;
+
+                    let target_rect = imageproc::rect::Rect::at(target_x as i32, target_y as i32)
+                        .of_size(TILE_SIZE_VEC2.x as u32, TILE_SIZE_VEC2.y as u32);
+
+                    let bc = image::Rgba(cur_tile.bc.to_array());
+
+                    let fc = cur_tile.fc.to_normalized_gamma_f32();
+
+                    tile_sub_img.pixels_mut().for_each(|cur| {
+                        *cur = image::Rgba([
+                            (cur.0[0] as f32 * fc[0]) as u8,
+                            (cur.0[1] as f32 * fc[1]) as u8,
+                            (cur.0[2] as f32 * fc[2]) as u8,
+                            (cur.0[3] as f32 * fc[3]) as u8,
+                        ]);
+                    });
+
+                    imageproc::drawing::draw_filled_rect_mut(&mut img, target_rect, bc);
+                    image::imageops::overlay(
+                        &mut img,
+                        &tile_sub_img,
+                        target_x.into(),
+                        target_y.into(),
+                    );
+                }
+            }
+        }
+
+        if scale != 1 {
+            image::imageops::resize(
+                &img,
+                img.width() * scale,
+                img.height() * scale,
+                image::imageops::Nearest,
+            )
+            .save_with_format(path, image::ImageFormat::Png)
+            .unwrap();
+        } else {
+            img.save_with_format(path, image::ImageFormat::Png).unwrap();
+        }
+    }
+
     pub fn with_size(width: usize, height: usize) -> Self {
         let size = width * height;
         let mut cells = Vec::with_capacity(size);

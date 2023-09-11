@@ -2,6 +2,7 @@
 
 mod canvas;
 mod color_editer;
+mod export_image;
 mod file;
 mod image_button;
 mod new_file;
@@ -12,7 +13,10 @@ use canvas::Canvas;
 use color_editer::PencilState;
 use eframe::egui;
 use file::{load_canvas_from_file, write_canvas_to_file};
+use rust_i18n::t;
 use tile::TileSet;
+
+rust_i18n::i18n!("locals", fallback = "zh-CN");
 
 const TILE_SIZE: f32 = 16.0;
 const TILE_SIZE_VEC2: egui::Vec2 = egui::Vec2::splat(16.0);
@@ -37,6 +41,7 @@ struct FakePaint {
     cur_cell: Option<canvas::TileState>,
     editing_file_path: Option<String>,
     new_file_window: new_file::NewFileWinodw,
+    export_image_window: export_image::ExportImageWindow,
 }
 
 fn get_center_rect(rect: &egui::Rect, size: egui::Vec2) -> egui::Rect {
@@ -130,6 +135,7 @@ impl FakePaint {
             cur_cell: None,
             editing_file_path,
             new_file_window: new_file::NewFileWinodw::default(),
+            export_image_window: export_image::ExportImageWindow::default(),
         };
         r.pencil_state.palette = color_editer::Palette::from(palette);
         r
@@ -137,7 +143,7 @@ impl FakePaint {
 
     fn draw_pencil_state(&self, ui: &mut egui::Ui) {
         ui.horizontal(|ui| {
-            ui.label(egui::RichText::new("画笔：").size(24.0));
+            ui.label(egui::RichText::new(format!("{}: ", t!("pen"))).size(24.0));
             let (rect, _) = ui.allocate_exact_size(
                 egui::Vec2::splat(TILE_SIZE + 8.0),
                 egui::Sense::focusable_noninteractive(),
@@ -228,7 +234,7 @@ impl FakePaint {
     fn draw_pencil_colors(&mut self, ui: &mut egui::Ui) {
         ui.vertical(|ui| {
             ui.horizontal(|ui| {
-                ui.heading("颜色");
+                ui.heading(t!("color"));
                 self.pencil_state.color_editer(ui);
             });
             egui::Grid::new("pencil-colors")
@@ -284,9 +290,9 @@ impl FakePaint {
     }
 
     fn current_canvas_info(&self, ui: &mut egui::Ui) {
-        ui.heading("信息");
+        ui.heading(t!("info"));
         egui::Grid::new("info-grid").show(ui, |ui| {
-            ui.label("文件：");
+            ui.label(format!("{}: ", t!("file")));
             if let Some(string) = &self.editing_file_path {
                 let string = std::path::Path::new(string)
                     .file_stem()
@@ -299,18 +305,18 @@ impl FakePaint {
                 }
             }
             ui.end_row();
-            ui.label("画布尺寸：");
+            ui.label(format!("{}: ", t!("size")));
             ui.label(format!("{}x{}", self.canvas.width, self.canvas.height));
             ui.end_row();
             if let Some(cell) = self.cur_cell {
                 ui.label("id：");
                 ui.label(format!("{}", cell.idx));
                 ui.end_row();
-                ui.label("前景色：");
+                ui.label(format!("{}: ", t!("foreground_color")));
                 let (r, g, b, _) = cell.fc.to_tuple();
                 ui.label(format!("({:02X}, {:02X}, {:02X})", r, g, b));
                 ui.end_row();
-                ui.label("背景色：");
+                ui.label(format!("{}: ", t!("background_color")));
                 let (r, g, b, _) = cell.bc.to_tuple();
                 ui.label(format!("({:02X}, {:02X}, {:02X})", r, g, b));
                 ui.end_row();
@@ -318,10 +324,10 @@ impl FakePaint {
                 ui.label("id：");
                 ui.label("_");
                 ui.end_row();
-                ui.label("前景色：");
+                ui.label(format!("{}: ", t!("foreground_color")));
                 ui.label("_");
                 ui.end_row();
-                ui.label("背景色：");
+                ui.label(format!("{}: ", t!("background_color")));
                 ui.label("_");
                 ui.end_row();
             }
@@ -333,7 +339,7 @@ impl FakePaint {
         let idx = self.pencil_state.idx;
         let x = idx % self.tile.columns;
         let y = idx / self.tile.columns;
-        ui.heading(format!("字符--({},{})", x, y));
+        ui.heading(format!("{}--({},{})", t!("char"), x, y));
         egui::Grid::new("char-selectors")
             .spacing(egui::Vec2::ZERO)
             .striped(true)
@@ -370,79 +376,16 @@ impl FakePaint {
                 }
             });
     }
-
-    fn export_canvas(&self) {
-        if let Some(path) = rfd::FileDialog::new()
-            .add_filter("png", &["png"])
-            .set_title("导出为图片")
-            .save_file()
-        {
-            use image::{GenericImageView, ImageBuffer, RgbaImage};
-            let tile_image = &self.tile.image_data;
-            let mut img: RgbaImage = ImageBuffer::new(
-                self.canvas.width as u32 * TILE_SIZE as u32,
-                self.canvas.height as u32 * TILE_SIZE as u32,
-            );
-            for y in 0..self.canvas.height {
-                for x in 0..self.canvas.width {
-                    let cur = self.canvas.cells[x + y * self.canvas.width].clone();
-                    if let Some(tile) = cur {
-                        let uv = self.tile.uv(tile.idx).left_top();
-                        let mut tile_sub_img = tile_image
-                            .view(
-                                (uv.x * tile_image.width() as f32) as u32,
-                                (uv.y * tile_image.height() as f32) as u32,
-                                TILE_SIZE_VEC2.x as u32,
-                                TILE_SIZE_VEC2.y as u32,
-                            )
-                            .to_image();
-
-                        let target_x = x as u32 * TILE_SIZE_VEC2.x as u32;
-                        let target_y = y as u32 * TILE_SIZE_VEC2.y as u32;
-
-                        let target_rect =
-                            imageproc::rect::Rect::at(target_x as i32, target_y as i32)
-                                .of_size(TILE_SIZE_VEC2.x as u32, TILE_SIZE_VEC2.y as u32);
-
-                        let bc = image::Rgba(tile.bc.to_array());
-
-                        let fc = tile.fc.to_normalized_gamma_f32();
-
-                        tile_sub_img.pixels_mut().for_each(|cur| {
-                            *cur = image::Rgba([
-                                (cur.0[0] as f32 * fc[0]) as u8,
-                                (cur.0[1] as f32 * fc[1]) as u8,
-                                (cur.0[2] as f32 * fc[2]) as u8,
-                                (cur.0[3] as f32 * fc[3]) as u8,
-                            ]);
-                        });
-
-                        imageproc::drawing::draw_filled_rect_mut(&mut img, target_rect, bc);
-                        image::imageops::overlay(
-                            &mut img,
-                            &tile_sub_img,
-                            target_x.into(),
-                            target_y.into(),
-                        );
-                    }
-                }
-            }
-
-            img.save(path).unwrap();
-        }
-    }
 }
 
 impl eframe::App for FakePaint {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        self.new_file_window
-            .show(ctx, &mut self.canvas, &mut self.editing_file_path);
         egui::TopBottomPanel::new(egui::panel::TopBottomSide::Top, "top_panel").show(ctx, |ui| {
             ui.horizontal(|ui| {
-                ui.menu_button("文件", |ui| {
-                    if ui.button("打开").clicked() {
+                ui.menu_button(t!("file"), |ui| {
+                    if ui.button(t!("open")).clicked() {
                         if let Some(path) = rfd::FileDialog::new()
-                            .set_title("选择json")
+                            .set_title(t!("select_json"))
                             .add_filter("json", &["json"])
                             .pick_file()
                         {
@@ -460,18 +403,16 @@ impl eframe::App for FakePaint {
                         }
                         ui.close_menu();
                     }
-                    if ui.button("新建").clicked() {
+                    if ui.button(t!("new")).clicked() {
                         self.new_file_window.open();
-                        // self.canvas = Canvas::default();
-                        // self.editing_file_path = None;
                         ui.close_menu();
                     }
-                    if ui.button("保存").clicked() {
+                    if ui.button(t!("save")).clicked() {
                         if let Some(path) = &self.editing_file_path {
                             let _ = write_canvas_to_file(&self.canvas, &std::path::Path::new(path));
                         } else {
                             if let Some(path) = rfd::FileDialog::new()
-                                .set_title("保存")
+                                .set_title(t!("save"))
                                 .add_filter("json", &["json"])
                                 .save_file()
                             {
@@ -483,9 +424,9 @@ impl eframe::App for FakePaint {
                         }
                         ui.close_menu();
                     }
-                    if ui.button("保存为").clicked() {
+                    if ui.button(t!("save_as")).clicked() {
                         if let Some(path) = rfd::FileDialog::new()
-                            .set_title("保存")
+                            .set_title(t!("save"))
                             .add_filter("json", &["json"])
                             .save_file()
                         {
@@ -496,8 +437,8 @@ impl eframe::App for FakePaint {
                         }
                         ui.close_menu();
                     }
-                    if ui.button("导出").clicked() {
-                        self.export_canvas();
+                    if ui.button(t!("export")).clicked() {
+                        self.export_image_window.open();
                         ui.close_menu();
                     }
                 });
@@ -505,22 +446,22 @@ impl eframe::App for FakePaint {
             });
         });
 
-        egui::SidePanel::left("left_panel")
-            .resizable(false)
-            .show(ctx, |ui| {
-                self.draw_pencil_state(ui);
-                // ui.separator();
-                self.char_selector(ui);
+        egui::SidePanel::left("left_panel").show(ctx, |ui| {
+            self.draw_pencil_state(ui);
+            self.char_selector(ui);
+            ui.separator();
+            ui.horizontal(|ui| {
+                self.draw_palette(ui);
                 ui.separator();
-                ui.horizontal(|ui| {
-                    self.draw_palette(ui);
-                    ui.separator();
-                    self.draw_pencil_colors(ui);
-                });
-                ui.separator();
-                self.current_canvas_info(ui);
+                self.draw_pencil_colors(ui);
             });
+            ui.separator();
+            self.current_canvas_info(ui);
+        });
         egui::CentralPanel::default().show(ctx, |ui| {
+            self.export_image_window.show(ctx, &self.canvas, &self.tile);
+            self.new_file_window
+                .show(ctx, &mut self.canvas, &mut self.editing_file_path);
             self.draw_canvas(ui);
         });
     }

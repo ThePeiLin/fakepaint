@@ -1,29 +1,23 @@
 use eframe::egui;
 
-pub struct NewFileWinodw {
+pub struct ExportImageWindow {
     open: bool,
-    pub width: usize,
-    pub height: usize,
+    pub scale: u32,
     pub file_name: String,
 }
 
-impl NewFileWinodw {
+impl ExportImageWindow {
     pub fn open(&mut self) {
         self.open = true;
     }
 
-    pub fn show(
-        &mut self,
-        ctx: &egui::Context,
-        canvas: &mut crate::Canvas,
-        editing_file_name: &mut Option<String>,
-    ) {
+    pub fn show(&mut self, ctx: &egui::Context, canvas: &crate::Canvas, tile: &crate::TileSet) {
         use rust_i18n::t;
         let mut created = false;
-        egui::Window::new(t!("new_file"))
+        egui::Window::new(t!("export_image"))
             .open(&mut self.open)
             .show(ctx, |ui| {
-                egui::Grid::new("new-file")
+                egui::Grid::new("export-image")
                     .striped(true)
                     .num_columns(2)
                     .show(ui, |ui| {
@@ -31,7 +25,7 @@ impl NewFileWinodw {
                         ui.text_edit_singleline(&mut self.file_name);
                         if ui.button(t!("browse")).clicked() {
                             if let Some(path) = rfd::FileDialog::new()
-                                .add_filter("json", &["json"])
+                                .add_filter("png", &["png"])
                                 .save_file()
                             {
                                 if let Some(string) = path.to_str() {
@@ -40,19 +34,18 @@ impl NewFileWinodw {
                             }
                         }
                         ui.end_row();
-                        ui.label(t!("width"));
-                        ui.add(egui::DragValue::new(&mut self.width));
+                        ui.label(t!("scale"));
+                        ui.add(
+                            egui::DragValue::new(&mut self.scale)
+                                .clamp_range(core::ops::RangeInclusive::new(1, 16)),
+                        );
                         ui.end_row();
-                        ui.label(t!("height"));
-                        ui.add(egui::DragValue::new(&mut self.height));
-                        ui.end_row();
-                        if ui.button(t!("create")).clicked() && self.file_name.len() > 0 {
+                        if ui.button(t!("export")).clicked() && self.file_name.len() > 0 {
                             let mut path = std::path::PathBuf::new();
                             path.push(&self.file_name);
-                            path.set_extension("json");
+                            path.set_extension("png");
                             if let Some(string) = path.to_str() {
-                                *canvas = crate::Canvas::with_size(self.width, self.height);
-                                *editing_file_name = Some(string.to_string());
+                                canvas.export_as_image(tile, string, self.scale);
                                 created = true;
                             }
                         }
@@ -64,13 +57,12 @@ impl NewFileWinodw {
     }
 }
 
-impl Default for NewFileWinodw {
+impl Default for ExportImageWindow {
     fn default() -> Self {
         Self {
             open: false,
-            width: 16,
-            height: 16,
             file_name: "".to_string(),
+            scale: 1,
         }
     }
 }
