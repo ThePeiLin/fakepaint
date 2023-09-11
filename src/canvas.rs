@@ -63,37 +63,39 @@ where
 
 #[derive(Clone, Serialize, Deserialize)]
 pub struct Canvas {
-    pub size_x: usize,
-    pub size_y: usize,
+    pub width: usize,
+    pub height: usize,
     pub cells: Vec<Option<TileState>>,
 }
 
 impl Default for Canvas {
     fn default() -> Self {
-        let size_x: usize = 16;
-        let size_y: usize = 16;
-        let size = size_x * size_x;
-        let mut cells = Vec::with_capacity(size);
-        cells.resize(size, None);
-        Self {
-            cells,
-            size_x,
-            size_y,
-        }
+        Self::with_size(16, 16)
     }
 }
 
 impl Canvas {
+    pub fn with_size(width: usize, height: usize) -> Self {
+        let size = width * height;
+        let mut cells = Vec::with_capacity(size);
+        cells.resize(size, None);
+        Self {
+            cells,
+            width,
+            height,
+        }
+    }
+
     pub fn get_cell_mut(&mut self, x: usize, y: usize) -> &mut Option<TileState> {
-        &mut self.cells[y * self.size_x + x]
+        &mut self.cells[y * self.width + x]
     }
 
     pub fn get_cell(&self, x: usize, y: usize) -> &Option<TileState> {
-        &self.cells[y * self.size_x + x]
+        &self.cells[y * self.width + x]
     }
 
     #[allow(unused)]
     pub fn size(&self) -> usize {
-        self.size_x * self.size_y
+        self.width * self.height
     }
 }

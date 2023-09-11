@@ -46,23 +46,6 @@ impl Palette {
     pub fn contains_color(&self, color: egui::Color32) -> bool {
         self.color_index_hash_map.contains_key(&color)
     }
-    // pub fn new() -> Self {
-    //     let palette;
-    //     if let Ok(pal) = load_palette(std::path::Path::new("palette.json")) {
-    //         palette = pal
-    //     } else {
-    //         palette = vec![egui::Color32::WHITE, egui::Color32::BLACK];
-    //     }
-    //     let mut color_index_hash_map = HashMap::with_capacity(palette.len());
-    //     for (i, c) in palette.iter().enumerate() {
-    //         color_index_hash_map.insert(*c, i);
-    //     }
-    //     Self {
-    //         palette,
-    //         color_index_hash_map,
-    //         editing: false,
-    //     }
-    // }
 }
 
 impl Default for Palette {

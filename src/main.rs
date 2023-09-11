@@ -4,6 +4,7 @@ mod canvas;
 mod color_editer;
 mod file;
 mod image_button;
+mod new_file;
 mod setup;
 mod tile;
 
@@ -35,6 +36,7 @@ struct FakePaint {
     canvas: Canvas,
     cur_cell: Option<canvas::TileState>,
     editing_file_path: Option<String>,
+    new_file_window: new_file::NewFileWinodw,
 }
 
 fn get_center_rect(rect: &egui::Rect, size: egui::Vec2) -> egui::Rect {
@@ -127,6 +129,7 @@ impl FakePaint {
             canvas,
             cur_cell: None,
             editing_file_path,
+            new_file_window: new_file::NewFileWinodw::default(),
         };
         r.pencil_state.palette = color_editer::Palette::from(palette);
         r
@@ -176,14 +179,14 @@ impl FakePaint {
     fn draw_canvas(&mut self, ui: &mut egui::Ui) {
         self.cur_cell = None;
         let (rect, res) = ui.allocate_exact_size(
-            egui::Vec2::splat(TILE_SIZE * self.canvas.size_x as f32),
+            egui::Vec2::splat(TILE_SIZE * self.canvas.width as f32),
             egui::Sense::drag(),
         );
 
         let hover_pos = res.hover_pos();
         if ui.is_rect_visible(rect) {
-            for y in 0..self.canvas.size_y {
-                for x in 0..self.canvas.size_x {
+            for y in 0..self.canvas.height {
+                for x in 0..self.canvas.width {
                     let rect = compute_grid_rect(rect, TILE_SIZE_VEC2, x, y);
                     let cell = self.canvas.get_cell(x, y);
 
@@ -297,7 +300,7 @@ impl FakePaint {
             }
             ui.end_row();
             ui.label("画布尺寸：");
-            ui.label(format!("{}x{}", self.canvas.size_x, self.canvas.size_y));
+            ui.label(format!("{}x{}", self.canvas.width, self.canvas.height));
             ui.end_row();
             if let Some(cell) = self.cur_cell {
                 ui.label("id：");
@@ -377,12 +380,12 @@ impl FakePaint {
             use image::{GenericImageView, ImageBuffer, RgbaImage};
             let tile_image = &self.tile.image_data;
             let mut img: RgbaImage = ImageBuffer::new(
-                self.canvas.size_x as u32 * TILE_SIZE as u32,
-                self.canvas.size_y as u32 * TILE_SIZE as u32,
+                self.canvas.width as u32 * TILE_SIZE as u32,
+                self.canvas.height as u32 * TILE_SIZE as u32,
             );
-            for y in 0..self.canvas.size_y {
-                for x in 0..self.canvas.size_x {
-                    let cur = self.canvas.cells[x + y * self.canvas.size_x].clone();
+            for y in 0..self.canvas.height {
+                for x in 0..self.canvas.width {
+                    let cur = self.canvas.cells[x + y * self.canvas.width].clone();
                     if let Some(tile) = cur {
                         let uv = self.tile.uv(tile.idx).left_top();
                         let mut tile_sub_img = tile_image
@@ -432,6 +435,8 @@ impl FakePaint {
 
 impl eframe::App for FakePaint {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        self.new_file_window
+            .show(ctx, &mut self.canvas, &mut self.editing_file_path);
         egui::TopBottomPanel::new(egui::panel::TopBottomSide::Top, "top_panel").show(ctx, |ui| {
             ui.horizontal(|ui| {
                 ui.menu_button("文件", |ui| {
@@ -456,8 +461,9 @@ impl eframe::App for FakePaint {
                         ui.close_menu();
                     }
                     if ui.button("新建").clicked() {
-                        self.canvas = Canvas::default();
-                        self.editing_file_path = None;
+                        self.new_file_window.open();
+                        // self.canvas = Canvas::default();
+                        // self.editing_file_path = None;
                         ui.close_menu();
                     }
                     if ui.button("保存").clicked() {
@@ -499,19 +505,21 @@ impl eframe::App for FakePaint {
             });
         });
 
-        egui::SidePanel::left("left_panel").show(ctx, |ui| {
-            self.draw_pencil_state(ui);
-            // ui.separator();
-            self.char_selector(ui);
-            ui.separator();
-            ui.horizontal(|ui| {
-                self.draw_palette(ui);
+        egui::SidePanel::left("left_panel")
+            .resizable(false)
+            .show(ctx, |ui| {
+                self.draw_pencil_state(ui);
+                // ui.separator();
+                self.char_selector(ui);
                 ui.separator();
-                self.draw_pencil_colors(ui);
+                ui.horizontal(|ui| {
+                    self.draw_palette(ui);
+                    ui.separator();
+                    self.draw_pencil_colors(ui);
+                });
+                ui.separator();
+                self.current_canvas_info(ui);
             });
-            ui.separator();
-            self.current_canvas_info(ui);
-        });
         egui::CentralPanel::default().show(ctx, |ui| {
             self.draw_canvas(ui);
         });
