@@ -53,13 +53,3 @@ pub fn load_palette(path: &Path) -> Result<Vec<egui::Color32>, Box<dyn Error>> {
     Ok(to_color_vec(palette))
 }
 
-pub fn write_canvas_and_palette<'c, 'p>(
-    canvas: &'c Canvas,
-    palette: &'p Vec<egui::Color32>,
-    canvas_path: &'c Path,
-    palette_path: &'p Path,
-) -> Result<(), Box<dyn Error>> {
-    write_canvas_to_file(canvas, canvas_path)?;
-    write_palette(palette, palette_path)?;
-    Ok(())
-}

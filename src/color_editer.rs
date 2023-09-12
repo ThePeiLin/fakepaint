@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::canvas::TileState;
+use crate::{canvas::TileState, file::load_palette, file::write_palette};
 use eframe::egui;
 use palette::FromColor;
 
@@ -221,9 +221,30 @@ impl PencilState {
         }
 
         ui.vertical(|ui| {
+            ui.heading(t!("palette"));
             ui.horizontal(|ui| {
-                ui.heading(t!("palette"));
                 self.palette_state_toggle(ui);
+                if ui.button(t!("save")).clicked() {
+                    if let Some(path) = rfd::FileDialog::new()
+                        .set_title(t!("save"))
+                        .add_filter("json", &["json"])
+                        .save_file()
+                    {
+                        let _ = write_palette(self.palette_vec_ref(), &path);
+                    }
+                }
+
+                if ui.button(t!("load")).clicked() {
+                    if let Some(path) = rfd::FileDialog::new()
+                        .set_title(t!("select_json"))
+                        .add_filter("json", &["json"])
+                        .pick_file()
+                    {
+                        if let Ok(pp) = load_palette(std::path::Path::new(&path)) {
+                            self.palette = pp.into();
+                        }
+                    }
+                }
             });
             egui::ScrollArea::vertical()
                 .scroll_bar_visibility(ScrollBarVisibility::AlwaysVisible)
