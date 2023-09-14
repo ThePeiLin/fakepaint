@@ -21,6 +21,7 @@ impl NewFileWinodw {
         use rust_i18n::t;
         let mut created = false;
         egui::Window::new(t!("new_file"))
+            .resizable(false)
             .open(&mut self.open)
             .show(ctx, |ui| {
                 egui::Grid::new("new-file")
@@ -41,10 +42,16 @@ impl NewFileWinodw {
                         }
                         ui.end_row();
                         ui.label(t!("width"));
-                        ui.add(egui::DragValue::new(&mut self.width));
+                        ui.add(
+                            egui::DragValue::new(&mut self.width)
+                                .clamp_range(core::ops::RangeInclusive::new(1, std::usize::MAX)),
+                        );
                         ui.end_row();
                         ui.label(t!("height"));
-                        ui.add(egui::DragValue::new(&mut self.height));
+                        ui.add(
+                            egui::DragValue::new(&mut self.height)
+                                .clamp_range(core::ops::RangeInclusive::new(1, std::usize::MAX)),
+                        );
                         ui.end_row();
                         if ui.button(t!("create")).clicked() && self.file_name.len() > 0 {
                             let mut path = std::path::PathBuf::new();

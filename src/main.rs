@@ -10,7 +10,7 @@ mod setup;
 mod tile;
 mod undo;
 
-use canvas::Canvas;
+use canvas::{Canvas, CanvasSizeEditWindow};
 use color_editer::PencilState;
 use eframe::egui;
 use file::{load_canvas_from_file, write_canvas_to_file};
@@ -45,6 +45,7 @@ struct FakePaint {
     editing_file_path: Option<String>,
     new_file_window: new_file::NewFileWinodw,
     export_image_window: export_image::ExportImageWindow,
+    canvas_size_window: CanvasSizeEditWindow,
 }
 
 fn get_center_rect(rect: &egui::Rect, size: egui::Vec2) -> egui::Rect {
@@ -140,6 +141,7 @@ impl FakePaint {
             editing_file_path,
             new_file_window: new_file::NewFileWinodw::default(),
             export_image_window: export_image::ExportImageWindow::default(),
+            canvas_size_window: CanvasSizeEditWindow::default(),
         };
         r.pencil_state.palette = color_editer::Palette::from(palette);
         r
@@ -174,8 +176,15 @@ impl FakePaint {
         }
     }
 
-    fn draw_nib(&mut self, ui: &mut egui::Ui, rect: egui::Rect, x: usize, y: usize) {
-        let cell = self.canvas.get_cell(x, y);
+    fn draw_nib(
+        &mut self,
+        ui: &mut egui::Ui,
+        rect: egui::Rect,
+        x: usize,
+        y: usize,
+        rendering_canvas: &Canvas,
+    ) {
+        let cell = rendering_canvas.get_cell(x, y);
         self.cur_cell = *cell;
         let pencil = &self.pencil_state;
         if let Some((fc, bc)) = pencil.get_fc_bc(cell) {
@@ -186,10 +195,8 @@ impl FakePaint {
         }
     }
 
-    fn draw_canvas(&mut self, ui: &mut egui::Ui) {
+    fn draw_canvas(&mut self, ui: &mut egui::Ui, rendering_canvas: &Canvas) {
         self.cur_cell = None;
-
-        let rendering_canvas=self.editing_history.excute_on_canvas(&self.canvas);
 
         let (rect, res) = ui.allocate_exact_size(
             egui::Vec2::splat(TILE_SIZE * rendering_canvas.width as f32),
@@ -204,7 +211,7 @@ impl FakePaint {
                     let cell = rendering_canvas.get_cell(x, y);
 
                     if hover_pos != None && rect.contains(hover_pos.unwrap()) {
-                        self.draw_nib(ui, rect, x, y);
+                        self.draw_nib(ui, rect, x, y, &rendering_canvas);
                     } else if let Some(c) = cell {
                         let idx = c.idx;
                         let bc = c.bc;
@@ -307,7 +314,7 @@ impl FakePaint {
         });
     }
 
-    fn current_canvas_info(&self, ui: &mut egui::Ui) {
+    fn current_canvas_info(&self, ui: &mut egui::Ui, rendering_canvas: &Canvas) {
         ui.heading(t!("info"));
         egui::Grid::new("info-grid").show(ui, |ui| {
             ui.label(format!("{}: ", t!("file")));
@@ -324,7 +331,10 @@ impl FakePaint {
             }
             ui.end_row();
             ui.label(format!("{}: ", t!("size")));
-            ui.label(format!("{}x{}", self.canvas.width, self.canvas.height));
+            ui.label(format!(
+                "{}x{}",
+                rendering_canvas.width, rendering_canvas.height
+            ));
             ui.end_row();
             if let Some(cell) = self.cur_cell {
                 ui.label("id：");
@@ -398,6 +408,8 @@ impl FakePaint {
 
 impl eframe::App for FakePaint {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        let rendering_canvas = self.editing_history.excute_on_canvas(&self.canvas);
+
         egui::TopBottomPanel::new(egui::panel::TopBottomSide::Top, "top_panel").show(ctx, |ui| {
             ui.horizontal(|ui| {
                 ui.menu_button(t!("file"), |ui| {
@@ -465,7 +477,13 @@ impl eframe::App for FakePaint {
                         ui.close_menu();
                     }
                 });
-                // ui.menu_button("编辑", |ui| {});
+                ui.menu_button(t!("edit"), |ui| {
+                    if ui.button(t!("canvas_size")).clicked() {
+                        self.canvas_size_window
+                            .open(rendering_canvas.width, rendering_canvas.height);
+                        ui.close_menu();
+                    }
+                });
             });
         });
 
@@ -479,17 +497,21 @@ impl eframe::App for FakePaint {
                 self.draw_pencil_colors(ui);
             });
             ui.separator();
-            self.current_canvas_info(ui);
+            self.current_canvas_info(ui, &rendering_canvas);
         });
+
         egui::CentralPanel::default().show(ctx, |ui| {
-            self.export_image_window.show(ctx, &self.canvas, &self.tile);
+            self.export_image_window.show(ctx, &rendering_canvas, &self.tile);
+            if let Some(cmd) = self.canvas_size_window.show(ctx) {
+                self.editing_history.push(cmd);
+            }
             if self
                 .new_file_window
                 .show(ctx, &mut self.canvas, &mut self.editing_file_path)
             {
                 self.editing_history.clear();
             }
-            self.draw_canvas(ui);
+            self.draw_canvas(ui, &rendering_canvas);
         });
     }
 

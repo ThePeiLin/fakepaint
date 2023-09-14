@@ -1,6 +1,7 @@
 use eframe::egui;
+use crate::canvas::Direction;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub enum PointContent {
     None,
     Tile {
@@ -10,9 +11,10 @@ pub enum PointContent {
     },
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub enum Command {
     Point { c: PointContent, x: usize, y: usize },
+    ChangeCanvasSize{width:usize,height:usize,direct:Direction},
 }
 
 impl Default for Command {
@@ -74,26 +76,17 @@ fn excute_painting_command_to_canvas_mut(canvas: &mut Canvas, commands: &[Comman
                         *target_tile = Some(TileState { idx, fc, bc })
                     }
                 }
-            }
+            },
+            Command::ChangeCanvasSize { width, height, direct }=>{
+                canvas.change_canvas_size(width,height,direct);
+            },
         }
     }
 }
 
 fn excute_painting_command_to_canvas(canvas: &Canvas, commands: &[Command]) -> Canvas {
     let mut canvas = canvas.clone();
-    for command in commands {
-        match command.clone() {
-            Command::Point { c, x, y } => {
-                let target_tile = canvas.get_cell_mut(x, y);
-                match c {
-                    PointContent::None => *target_tile = None,
-                    PointContent::Tile { idx, fc, bc } => {
-                        *target_tile = Some(TileState { idx, fc, bc })
-                    }
-                }
-            }
-        }
-    }
+    excute_painting_command_to_canvas_mut(&mut canvas, commands);
     canvas
 }
 
@@ -139,7 +132,8 @@ impl History {
             excute_painting_command_to_canvas_mut(
                 self.rendering_canvas.as_mut().unwrap(),
                 &self.edit_history[self.last_command * COMMAND_EXCUTE_GAP
-                    ..(last_command - self.last_command) * COMMAND_EXCUTE_GAP],
+                    ..(self.last_command * COMMAND_EXCUTE_GAP)
+                        + (last_command - self.last_command) * COMMAND_EXCUTE_GAP],
             );
             self.last_command = last_command;
         }

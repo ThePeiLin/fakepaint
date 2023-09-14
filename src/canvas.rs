@@ -3,6 +3,113 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::tile::TileSet;
 
+#[derive(PartialEq, Eq, Clone, Copy)]
+pub enum Direction {
+    LeftTop,
+    TopMiddle,
+    RightTop,
+    Left,
+    Center,
+    Right,
+    LeftButtom,
+    ButtomMiddle,
+    RightButtom,
+}
+pub struct CanvasSizeEditWindow {
+    open: bool,
+    origin_width: usize,
+    origin_height: usize,
+    width: usize,
+    height: usize,
+    direct: Direction,
+}
+
+impl Default for CanvasSizeEditWindow {
+    fn default() -> Self {
+        Self {
+            open: false,
+            width: 16,
+            height: 16,
+            origin_width: 16,
+            origin_height: 16,
+            direct: Direction::Center,
+        }
+    }
+}
+
+use crate::undo::Command;
+impl CanvasSizeEditWindow {
+    pub fn open(&mut self, width: usize, height: usize) {
+        self.open = true;
+        self.width = width;
+        self.height = height;
+        self.origin_width = width;
+        self.origin_height = height;
+    }
+
+    pub fn show(&mut self, ctx: &egui::Context) -> Option<Command> {
+        use rust_i18n::t;
+
+        let mut cmd: Option<Command> = None;
+
+        let mut close_windows = false;
+        egui::Window::new(t!("canvas_size"))
+            .open(&mut self.open)
+            .resizable(false)
+            .show(ctx, |ui| {
+                egui::Grid::new("canvas-size")
+                    .striped(true)
+                    .num_columns(2)
+                    .show(ui, |ui| {
+                        ui.label(t!("width"));
+                        ui.add(
+                            egui::DragValue::new(&mut self.width)
+                                .clamp_range(core::ops::RangeInclusive::new(1, std::usize::MAX)),
+                        );
+                        ui.end_row();
+                        ui.label(t!("height"));
+                        ui.add(
+                            egui::DragValue::new(&mut self.height)
+                                .clamp_range(core::ops::RangeInclusive::new(1, std::usize::MAX)),
+                        );
+                    });
+                egui::Grid::new("canvas-size-direct")
+                    .striped(true)
+                    .spacing(egui::Vec2::ZERO)
+                    .num_columns(3)
+                    .min_col_width(0.0)
+                    .show(ui, |ui| {
+                        ui.selectable_value(&mut self.direct, Direction::LeftTop, "⭦");
+                        ui.selectable_value(&mut self.direct, Direction::TopMiddle, "⭡");
+                        ui.selectable_value(&mut self.direct, Direction::RightTop, "⭧");
+                        ui.end_row();
+
+                        ui.selectable_value(&mut self.direct, Direction::Left, "⭠");
+                        ui.selectable_value(&mut self.direct, Direction::Center, "⭘");
+                        ui.selectable_value(&mut self.direct, Direction::Right, "⭢");
+                        ui.end_row();
+
+                        ui.selectable_value(&mut self.direct, Direction::LeftButtom, "⭩");
+                        ui.selectable_value(&mut self.direct, Direction::ButtomMiddle, "⭣");
+                        ui.selectable_value(&mut self.direct, Direction::RightButtom, "⭨");
+                    });
+                if ui.button("Ok").clicked() {
+                    if self.origin_width != self.width || self.origin_height != self.height {
+                        cmd = Some(Command::ChangeCanvasSize {
+                            width: self.width,
+                            height: self.height,
+                            direct: self.direct,
+                        });
+                    }
+                    close_windows = true;
+                }
+            });
+        if close_windows {
+            self.open = false;
+        }
+        cmd
+    }
+}
 #[derive(Copy, Clone, Serialize, Deserialize, PartialEq, Eq, Debug)]
 pub struct TileState {
     pub idx: usize,
@@ -167,5 +274,118 @@ impl Canvas {
     #[allow(unused)]
     pub fn size(&self) -> usize {
         self.width * self.height
+    }
+
+    pub fn change_canvas_size(&mut self, width: usize, height: usize, direct: Direction) {
+        let copy_start_x: usize;
+        let copy_start_y: usize;
+
+        let copy_to_x: usize;
+        let copy_to_y: usize;
+
+        fn compute_start_middle_pos(target_width: usize, origin_width: usize) -> usize {
+            if target_width < origin_width {
+                (origin_width - target_width) / 2
+            } else {
+                0
+            }
+        }
+
+        fn compute_start_right_pos(target_width: usize, origin_width: usize) -> usize {
+            if target_width < origin_width {
+                origin_width - target_width
+            } else {
+                0
+            }
+        }
+
+        fn compute_to_middle_pos(target_width: usize, origin_width: usize) -> usize {
+            if target_width < origin_width {
+                0
+            } else {
+                (target_width - origin_width) / 2
+            }
+        }
+
+        fn compute_to_right_pos(target_width: usize, origin_width: usize) -> usize {
+            if target_width < origin_width {
+                0
+            } else {
+                target_width - origin_width
+            }
+        }
+
+        match direct {
+            Direction::LeftTop => {
+                copy_start_x = 0;
+                copy_start_y = 0;
+                copy_to_x = 0;
+                copy_to_y = 0;
+            }
+            Direction::TopMiddle => {
+                copy_start_x = compute_start_middle_pos(width, self.width);
+                copy_start_y = 0;
+                copy_to_x = compute_to_middle_pos(width, self.width);
+                copy_to_y = 0;
+            }
+
+            Direction::RightTop => {
+                copy_start_x = compute_start_right_pos(width, self.width);
+                copy_start_y = 0;
+                copy_to_x = compute_to_right_pos(width, self.width);
+                copy_to_y = 0;
+            }
+            Direction::Left => {
+                copy_start_x = 0;
+                copy_start_y = compute_start_middle_pos(height, self.height);
+                copy_to_x = 0;
+                copy_to_y = compute_to_middle_pos(height, self.height);
+            }
+
+            Direction::Center => {
+                copy_start_x = compute_start_middle_pos(width, self.width);
+                copy_start_y = compute_start_middle_pos(height, self.height);
+                copy_to_x = compute_to_middle_pos(width, self.width);
+                copy_to_y = compute_to_middle_pos(height, self.height);
+            }
+
+            Direction::Right => {
+                copy_start_x = compute_start_right_pos(width, self.width);
+                copy_start_y = compute_start_middle_pos(height, self.height);
+                copy_to_x = compute_to_right_pos(width, self.width);
+                copy_to_y = compute_to_middle_pos(height, self.height);
+            }
+
+            Direction::LeftButtom => {
+                copy_start_x = 0;
+                copy_start_y = compute_start_right_pos(width, self.height);
+                copy_to_x = 0;
+                copy_to_y = compute_to_right_pos(width, self.height);
+            }
+
+            Direction::ButtomMiddle => {
+                copy_start_x = compute_start_middle_pos(width, self.width);
+                copy_start_y = compute_start_right_pos(width, self.height);
+                copy_to_x = compute_to_middle_pos(width, self.width);
+                copy_to_y = compute_to_right_pos(width, self.height);
+            }
+
+            Direction::RightButtom => {
+                copy_start_x = compute_start_right_pos(width, self.width);
+                copy_start_y = compute_start_right_pos(width, self.height);
+                copy_to_x = compute_to_right_pos(width, self.width);
+                copy_to_y = compute_to_right_pos(width, self.height);
+            }
+        }
+
+        let mut new_canvas = Self::with_size(width, height);
+
+        for y in 0..std::cmp::min(height, self.height) {
+            for x in 0..std::cmp::min(width, self.width) {
+                *new_canvas.get_cell_mut(copy_to_x + x, copy_to_y + y) =
+                    *self.get_cell(copy_start_x + x, copy_start_y + y);
+            }
+        }
+        *self = new_canvas;
     }
 }

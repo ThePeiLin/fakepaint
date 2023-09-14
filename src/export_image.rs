@@ -15,6 +15,7 @@ impl ExportImageWindow {
         use rust_i18n::t;
         let mut created = false;
         egui::Window::new(t!("export_image"))
+            .resizable(false)
             .open(&mut self.open)
             .show(ctx, |ui| {
                 egui::Grid::new("export-image")
