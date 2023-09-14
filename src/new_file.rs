@@ -17,7 +17,7 @@ impl NewFileWinodw {
         ctx: &egui::Context,
         canvas: &mut crate::Canvas,
         editing_file_name: &mut Option<String>,
-    ) {
+    ) -> bool {
         use rust_i18n::t;
         let mut created = false;
         egui::Window::new(t!("new_file"))
@@ -61,6 +61,7 @@ impl NewFileWinodw {
         if created {
             self.open = false;
         }
+        created
     }
 }
 

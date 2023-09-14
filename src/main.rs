@@ -8,6 +8,7 @@ mod image_button;
 mod new_file;
 mod setup;
 mod tile;
+mod undo;
 
 use canvas::Canvas;
 use color_editer::PencilState;
@@ -34,10 +35,12 @@ fn main() -> Result<(), eframe::Error> {
     )
 }
 
+use undo::History;
 struct FakePaint {
     tile: TileSet,
     pencil_state: PencilState,
     canvas: Canvas,
+    editing_history: History,
     cur_cell: Option<canvas::TileState>,
     editing_file_path: Option<String>,
     new_file_window: new_file::NewFileWinodw,
@@ -132,6 +135,7 @@ impl FakePaint {
             tile: TileSet::new(image_data, tex_handle.unwrap(), 16, 16, TILE_SIZE_VEC2),
             pencil_state: PencilState::from(pen),
             canvas,
+            editing_history: History::new(),
             cur_cell: None,
             editing_file_path,
             new_file_window: new_file::NewFileWinodw::default(),
@@ -184,17 +188,20 @@ impl FakePaint {
 
     fn draw_canvas(&mut self, ui: &mut egui::Ui) {
         self.cur_cell = None;
+
+        let rendering_canvas=self.editing_history.excute_on_canvas(&self.canvas);
+
         let (rect, res) = ui.allocate_exact_size(
-            egui::Vec2::splat(TILE_SIZE * self.canvas.width as f32),
+            egui::Vec2::splat(TILE_SIZE * rendering_canvas.width as f32),
             egui::Sense::drag(),
         );
 
         let hover_pos = res.hover_pos();
         if ui.is_rect_visible(rect) {
-            for y in 0..self.canvas.height {
-                for x in 0..self.canvas.width {
+            for y in 0..rendering_canvas.height {
+                for x in 0..rendering_canvas.width {
                     let rect = compute_grid_rect(rect, TILE_SIZE_VEC2, x, y);
-                    let cell = self.canvas.get_cell(x, y);
+                    let cell = rendering_canvas.get_cell(x, y);
 
                     if hover_pos != None && rect.contains(hover_pos.unwrap()) {
                         self.draw_nib(ui, rect, x, y);
@@ -216,13 +223,16 @@ impl FakePaint {
 
         if res.hovered() && res.dragged() && hover_pos != None && rect.contains(hover_pos.unwrap())
         {
+            use undo::Command;
             let (x, y) = get_grid_x_y(rect, hover_pos.unwrap(), TILE_SIZE_VEC2);
             let ctx = ui.ctx();
+            let cell_ref = rendering_canvas.get_cell(x, y);
             if ctx.input(|i| i.pointer.primary_down()) {
-                let cell_ref = self.canvas.get_cell_mut(x, y);
-                *cell_ref = self.pencil_state.into_tile_state(cell_ref);
+                self.editing_history
+                    .push(Command::new(x, y, &self.pencil_state, cell_ref, false));
             } else if ctx.input(|i| i.pointer.secondary_down()) {
-                *(self.canvas.get_cell_mut(x, y)) = self.pencil_state.swap_color_and_into();
+                self.editing_history
+                    .push(Command::new(x, y, &self.pencil_state, cell_ref, true));
             }
         }
     }
@@ -269,6 +279,14 @@ impl FakePaint {
                     }
                     ui.end_row();
                 });
+            ui.horizontal(|ui| {
+                if ui.button(t!("undo")).clicked() {
+                    self.editing_history.undo();
+                }
+                if ui.button(t!("redo")).clicked() {
+                    self.editing_history.redo();
+                }
+            });
         });
     }
 
@@ -393,6 +411,7 @@ impl eframe::App for FakePaint {
                                 self.canvas = cc;
                                 if let Some(string) = path.to_str() {
                                     self.editing_file_path = Some(string.to_string());
+                                    self.editing_history.clear();
                                 }
                             }
                             // else {
@@ -408,6 +427,8 @@ impl eframe::App for FakePaint {
                         ui.close_menu();
                     }
                     if ui.button(t!("save")).clicked() {
+                        self.canvas = self.editing_history.excute_on_canvas(&self.canvas);
+                        self.editing_history.clear();
                         if let Some(path) = &self.editing_file_path {
                             let _ = write_canvas_to_file(&self.canvas, &std::path::Path::new(path));
                         } else {
@@ -430,6 +451,8 @@ impl eframe::App for FakePaint {
                             .add_filter("json", &["json"])
                             .save_file()
                         {
+                            self.canvas = self.editing_history.excute_on_canvas(&self.canvas);
+                            self.editing_history.clear();
                             let _ = write_canvas_to_file(&self.canvas, &path);
                             if let Some(string) = path.to_str() {
                                 self.editing_file_path = Some(string.to_string());
@@ -460,8 +483,12 @@ impl eframe::App for FakePaint {
         });
         egui::CentralPanel::default().show(ctx, |ui| {
             self.export_image_window.show(ctx, &self.canvas, &self.tile);
-            self.new_file_window
-                .show(ctx, &mut self.canvas, &mut self.editing_file_path);
+            if self
+                .new_file_window
+                .show(ctx, &mut self.canvas, &mut self.editing_file_path)
+            {
+                self.editing_history.clear();
+            }
             self.draw_canvas(ui);
         });
     }
