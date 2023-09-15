@@ -52,4 +52,3 @@ pub fn load_palette(path: &Path) -> Result<Vec<egui::Color32>, Box<dyn Error>> {
     let palette: Vec<(u8, u8, u8)> = serde_json::from_reader(reader)?;
     Ok(to_color_vec(palette))
 }
-

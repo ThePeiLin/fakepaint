@@ -83,7 +83,13 @@ impl Default for StoragePen {
     }
 }
 
+#[derive(Clone, PartialEq, Eq)]
+pub enum ToolEnum {
+    Pencil,
+    Fill,
+}
 pub struct PencilState {
+    pub tool: ToolEnum,
     pub idx: usize,
     pub fc: egui::Color32,
     pub bc: egui::Color32,
@@ -546,6 +552,7 @@ impl From<&Vec<egui::Color32>> for Palette {
 impl Default for PencilState {
     fn default() -> Self {
         Self {
+            tool: ToolEnum::Pencil,
             idx: 0,
             fc: egui::Color32::WHITE,
             bc: egui::Color32::BLACK,

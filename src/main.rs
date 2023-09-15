@@ -40,6 +40,7 @@ struct FakePaint {
     tile: TileSet,
     pencil_state: PencilState,
     canvas: Canvas,
+    rendering_scale: f32,
     editing_history: History,
     cur_cell: Option<canvas::TileState>,
     editing_file_path: Option<String>,
@@ -89,9 +90,14 @@ impl FakePaint {
         let pen: StoragePen;
         let canvas: Canvas;
         let palette: Vec<egui::Color32>;
+        let scale: f32;
         let mut editing_file_path: Option<String>;
 
         if let Some(storage) = cc.storage {
+            scale =
+                serde_json::from_str(&storage.get_string("scale").unwrap_or_else(|| String::new()))
+                    .unwrap_or_else(|_| 1.0);
+
             pen = serde_json::from_str(&storage.get_string("pen").unwrap_or_else(|| String::new()))
                 .unwrap_or_else(|_| StoragePen::default());
             palette = serde_json::from_str(
@@ -123,6 +129,7 @@ impl FakePaint {
                 .unwrap_or_else(|_| Canvas::default());
             }
         } else {
+            scale = 1.0;
             pen = StoragePen::default();
             canvas = Canvas::default();
             palette = vec![egui::Color32::WHITE, egui::Color32::BLACK];
@@ -139,6 +146,7 @@ impl FakePaint {
             editing_history: History::new(),
             cur_cell: None,
             editing_file_path,
+            rendering_scale: scale,
             new_file_window: new_file::NewFileWinodw::default(),
             export_image_window: export_image::ExportImageWindow::default(),
             canvas_size_window: CanvasSizeEditWindow::default(),
@@ -200,17 +208,18 @@ impl FakePaint {
 
         let (rect, res) = ui.allocate_exact_size(
             egui::vec2(
-                TILE_SIZE * rendering_canvas.width as f32,
-                TILE_SIZE * rendering_canvas.height as f32,
+                self.rendering_scale * TILE_SIZE * rendering_canvas.width as f32,
+                self.rendering_scale * TILE_SIZE * rendering_canvas.height as f32,
             ),
             egui::Sense::drag(),
         );
 
         let hover_pos = res.hover_pos();
+        let cur_tile_size_vec2 = TILE_SIZE_VEC2 * self.rendering_scale;
         if ui.is_rect_visible(rect) {
             for y in 0..rendering_canvas.height {
                 for x in 0..rendering_canvas.width {
-                    let rect = compute_grid_rect(rect, TILE_SIZE_VEC2, x, y);
+                    let rect = compute_grid_rect(rect, cur_tile_size_vec2, x, y);
                     let cell = rendering_canvas.get_cell(x, y);
 
                     if hover_pos != None && rect.contains(hover_pos.unwrap()) {
@@ -234,15 +243,27 @@ impl FakePaint {
         if res.hovered() && res.dragged() && hover_pos != None && rect.contains(hover_pos.unwrap())
         {
             use undo::Command;
-            let (x, y) = get_grid_x_y(rect, hover_pos.unwrap(), TILE_SIZE_VEC2);
+            let (x, y) = get_grid_x_y(rect, hover_pos.unwrap(), cur_tile_size_vec2);
             let ctx = ui.ctx();
             let cell_ref = rendering_canvas.get_cell(x, y);
             if ctx.input(|i| i.pointer.primary_down()) {
-                self.editing_history
-                    .push(Command::new(x, y, &self.pencil_state, cell_ref, false));
+                self.editing_history.push(Command::new(
+                    x,
+                    y,
+                    &self.pencil_state,
+                    cell_ref,
+                    false,
+                    rendering_canvas,
+                ));
             } else if ctx.input(|i| i.pointer.secondary_down()) {
-                self.editing_history
-                    .push(Command::new(x, y, &self.pencil_state, cell_ref, true));
+                self.editing_history.push(Command::new(
+                    x,
+                    y,
+                    &self.pencil_state,
+                    cell_ref,
+                    true,
+                    rendering_canvas,
+                ));
             }
         }
     }
@@ -503,6 +524,16 @@ impl eframe::App for FakePaint {
             self.current_canvas_info(ui, &rendering_canvas);
         });
 
+        egui::SidePanel::right("right_panel")
+            .min_width(48.0)
+            .show(ctx, |ui| {
+                ui.heading(t!("tool"));
+                ui.separator();
+                use color_editer::ToolEnum;
+                ui.selectable_value(&mut self.pencil_state.tool, ToolEnum::Pencil, t!("pencil"));
+                ui.selectable_value(&mut self.pencil_state.tool, ToolEnum::Fill, t!("fill"));
+            });
+
         egui::CentralPanel::default().show(ctx, |ui| {
             self.export_image_window
                 .show(ctx, &rendering_canvas, &self.tile);
@@ -517,9 +548,24 @@ impl eframe::App for FakePaint {
             }
             self.draw_canvas(ui, &rendering_canvas);
         });
+        egui::TopBottomPanel::new(egui::panel::TopBottomSide::Bottom, "bottom_panel").show(
+            ctx,
+            |ui| {
+                ui.add(
+                    egui::widgets::Slider::new(&mut self.rendering_scale, 0.125..=8.0)
+                        .logarithmic(true)
+                        .step_by(0.125)
+                        .text(t!("scale")),
+                );
+            },
+        );
     }
 
     fn save(&mut self, storage: &mut dyn eframe::Storage) {
+        if let Ok(string) = serde_json::to_string(&self.rendering_scale) {
+            storage.set_string("scale", string);
+        }
+
         if let Ok(string) =
             serde_json::to_string(&color_editer::StoragePen::from(&self.pencil_state))
         {

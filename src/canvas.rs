@@ -11,9 +11,9 @@ pub enum Direction {
     Left,
     Center,
     Right,
-    LeftButtom,
-    ButtomMiddle,
-    RightButtom,
+    LeftBottom,
+    BottomMiddle,
+    RightBottom,
 }
 pub struct CanvasSizeEditWindow {
     open: bool,
@@ -131,21 +131,21 @@ fn compute_start_to_xy(
             copy_to_y = compute_to_middle_pos(target_height, origin_height);
         }
 
-        Direction::LeftButtom => {
+        Direction::LeftBottom => {
             copy_start_x = 0;
             copy_start_y = compute_start_right_pos(target_height, origin_height);
             copy_to_x = 0;
             copy_to_y = compute_to_right_pos(target_height, origin_height);
         }
 
-        Direction::ButtomMiddle => {
+        Direction::BottomMiddle => {
             copy_start_x = compute_start_middle_pos(target_width, origin_width);
             copy_start_y = compute_start_right_pos(target_height, origin_height);
             copy_to_x = compute_to_middle_pos(target_width, origin_width);
             copy_to_y = compute_to_right_pos(target_height, origin_height);
         }
 
-        Direction::RightButtom => {
+        Direction::RightBottom => {
             copy_start_x = compute_start_right_pos(target_width, origin_width);
             copy_start_y = compute_start_right_pos(target_height, origin_height);
             copy_to_x = compute_to_right_pos(target_width, origin_width);
@@ -214,9 +214,9 @@ impl CanvasSizeEditWindow {
                         ui.selectable_value(&mut self.direct, Direction::Right, "⭢");
                         ui.end_row();
 
-                        ui.selectable_value(&mut self.direct, Direction::LeftButtom, "⭩");
-                        ui.selectable_value(&mut self.direct, Direction::ButtomMiddle, "⭣");
-                        ui.selectable_value(&mut self.direct, Direction::RightButtom, "⭨");
+                        ui.selectable_value(&mut self.direct, Direction::LeftBottom, "⭩");
+                        ui.selectable_value(&mut self.direct, Direction::BottomMiddle, "⭣");
+                        ui.selectable_value(&mut self.direct, Direction::RightBottom, "⭨");
                     });
 
                 if origin_direct != self.direct
@@ -246,13 +246,13 @@ impl CanvasSizeEditWindow {
                 let border_top_before_drag = to_y - start_y;
                 let border_right_before_drag =
                     self.width as isize - (border_left_before_drag + self.origin_width as isize);
-                let border_buttom_before_drag =
+                let border_bottom_before_drag =
                     self.height as isize - (border_top_before_drag + self.origin_height as isize);
 
                 let mut border_left = border_left_before_drag;
                 let mut border_top = border_top_before_drag;
                 let mut border_right = border_right_before_drag;
-                let mut border_buttom = border_buttom_before_drag;
+                let mut border_bottom = border_bottom_before_drag;
 
                 ui.heading(t!("border"));
                 egui::Grid::new("canvas-size-border")
@@ -268,14 +268,14 @@ impl CanvasSizeEditWindow {
 
                         ui.label(t!("right"));
                         ui.add(egui::DragValue::new(&mut border_right));
-                        ui.label(t!("buttom"));
-                        ui.add(egui::DragValue::new(&mut border_buttom));
+                        ui.label(t!("bottom"));
+                        ui.add(egui::DragValue::new(&mut border_bottom));
                     });
 
                 if border_left_before_drag != border_left
                     || border_top_before_drag != border_top
                     || border_right_before_drag != border_right
-                    || border_buttom_before_drag != border_buttom
+                    || border_bottom_before_drag != border_bottom
                 {
                     self.start_x = if border_left > 0 {
                         0
@@ -301,7 +301,7 @@ impl CanvasSizeEditWindow {
                     };
 
                     let width = border_left + border_right + self.origin_width as isize;
-                    let height = border_top + border_buttom + self.origin_height as isize;
+                    let height = border_top + border_bottom + self.origin_height as isize;
                     self.width = if width < 0 { 1 } else { width as usize };
                     self.height = if height < 0 { 1 } else { height as usize };
                 }

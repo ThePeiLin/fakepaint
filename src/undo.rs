@@ -1,19 +1,21 @@
-use eframe::egui;
-
-#[derive(Clone, PartialEq, Eq)]
-pub enum PointContent {
-    None,
-    Tile {
-        idx: usize,
-        fc: egui::Color32,
-        bc: egui::Color32,
-    },
+#[derive(Clone)]
+pub struct FillPos {
+    c: Option<TileState>,
+    x: usize,
+    y: usize,
+    cells: Vec<Vec<bool>>,
 }
 
-#[derive(Clone, PartialEq, Eq)]
+impl PartialEq for FillPos {
+    fn eq(&self, other: &Self) -> bool {
+        self.c == other.c && self.x == other.x && self.y == other.y
+    }
+}
+
+#[derive(Clone, PartialEq)]
 pub enum Command {
     Point {
-        c: PointContent,
+        c: Option<TileState>,
         x: usize,
         y: usize,
     },
@@ -25,12 +27,13 @@ pub enum Command {
         to_x: usize,
         to_y: usize,
     },
+    Fill(FillPos),
 }
 
 impl Default for Command {
     fn default() -> Self {
         Self::Point {
-            c: PointContent::None,
+            c: None,
             x: 0,
             y: 0,
         }
@@ -45,7 +48,44 @@ pub struct History {
     last_command: usize,
 }
 
-use crate::{canvas::TileState, color_editer::PencilState, Canvas};
+use crate::{
+    canvas::TileState,
+    color_editer::{PencilState, ToolEnum},
+    Canvas,
+};
+
+fn compute_contigeous_cell(canvas: &Canvas, x: usize, y: usize) -> Vec<Vec<bool>> {
+    let mut retval: Vec<Vec<bool>> = Vec::with_capacity(canvas.height);
+    for _ in 0..canvas.height {
+        let mut row: Vec<bool> = Vec::with_capacity(canvas.width);
+        row.resize(canvas.width, false);
+        retval.push(row);
+    }
+    let &target_tile = canvas.get_cell(x, y);
+    let mut unchecked: Vec<(usize, usize)> = Vec::with_capacity(canvas.width * canvas.height);
+    unchecked.push((x, y));
+    let end_x = canvas.width - 1;
+    let end_y = canvas.height - 1;
+    while !unchecked.is_empty() {
+        let (x, y) = unchecked.pop().unwrap();
+        retval[y][x] = true;
+        if x > 0 && !retval[y][x - 1] && target_tile == *canvas.get_cell(x - 1, y) {
+            unchecked.push((x - 1, y));
+        }
+        if x < end_x && !retval[y][x + 1] && target_tile == *canvas.get_cell(x + 1, y) {
+            unchecked.push((x + 1, y));
+        }
+        if y > 0 && !retval[y - 1][x] && target_tile == *canvas.get_cell(x, y - 1) {
+            unchecked.push((x, y - 1));
+        }
+        if y < end_y && !retval[y + 1][x] && target_tile == *canvas.get_cell(x, y + 1) {
+            unchecked.push((x, y + 1));
+        }
+    }
+
+    retval
+}
+
 impl Command {
     pub fn new(
         x: usize,
@@ -53,24 +93,21 @@ impl Command {
         pen: &PencilState,
         cur_tile: &Option<TileState>,
         need_swap: bool,
+        canvas: &Canvas,
     ) -> Self {
         let tile = if need_swap {
             pen.swap_color_and_into()
         } else {
             pen.into_tile_state(cur_tile)
         };
-        if let Some(TileState { idx, fc, bc }) = tile {
-            Self::Point {
-                c: PointContent::Tile { idx, fc, bc },
+        match pen.tool {
+            ToolEnum::Pencil => Self::Point { c: tile, x, y },
+            ToolEnum::Fill => Self::Fill(FillPos {
+                c: tile,
+                cells: compute_contigeous_cell(canvas, x, y),
                 x,
                 y,
-            }
-        } else {
-            Self::Point {
-                c: PointContent::None,
-                x,
-                y,
-            }
+            }),
         }
     }
 }
@@ -79,13 +116,7 @@ fn excute_painting_command_to_canvas_mut(canvas: &mut Canvas, commands: &[Comman
     for command in commands {
         match command.clone() {
             Command::Point { c, x, y } => {
-                let target_tile = canvas.get_cell_mut(x, y);
-                match c {
-                    PointContent::None => *target_tile = None,
-                    PointContent::Tile { idx, fc, bc } => {
-                        *target_tile = Some(TileState { idx, fc, bc })
-                    }
-                }
+                *canvas.get_cell_mut(x, y) = c;
             }
             Command::ChangeCanvasSize {
                 width,
@@ -96,6 +127,20 @@ fn excute_painting_command_to_canvas_mut(canvas: &mut Canvas, commands: &[Comman
                 to_y,
             } => {
                 canvas.change_canvas_size(width, height, start_x, start_y, to_x, to_y);
+            }
+            Command::Fill(FillPos {
+                c,
+                cells,
+                x: _,
+                y: _,
+            }) => {
+                for (y, row) in cells.into_iter().enumerate() {
+                    for (x, need_filled) in row.into_iter().enumerate() {
+                        if need_filled {
+                            *canvas.get_cell_mut(x, y) = c;
+                        }
+                    }
+                }
             }
         }
     }
