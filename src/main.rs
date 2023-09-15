@@ -199,7 +199,10 @@ impl FakePaint {
         self.cur_cell = None;
 
         let (rect, res) = ui.allocate_exact_size(
-            egui::Vec2::splat(TILE_SIZE * rendering_canvas.width as f32),
+            egui::vec2(
+                TILE_SIZE * rendering_canvas.width as f32,
+                TILE_SIZE * rendering_canvas.height as f32,
+            ),
             egui::Sense::drag(),
         );
 
@@ -501,7 +504,8 @@ impl eframe::App for FakePaint {
         });
 
         egui::CentralPanel::default().show(ctx, |ui| {
-            self.export_image_window.show(ctx, &rendering_canvas, &self.tile);
+            self.export_image_window
+                .show(ctx, &rendering_canvas, &self.tile);
             if let Some(cmd) = self.canvas_size_window.show(ctx) {
                 self.editing_history.push(cmd);
             }
