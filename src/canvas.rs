@@ -273,7 +273,7 @@ impl CanvasSizeEditWindow {
                     });
 
                 if border_left_before_drag != border_left
-                    || border_top_before_drag != border_left
+                    || border_top_before_drag != border_top
                     || border_right_before_drag != border_right
                     || border_buttom_before_drag != border_buttom
                 {
