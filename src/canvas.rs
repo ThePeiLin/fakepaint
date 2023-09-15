@@ -22,6 +22,10 @@ pub struct CanvasSizeEditWindow {
     width: usize,
     height: usize,
     direct: Direction,
+    start_x: usize,
+    start_y: usize,
+    to_x: usize,
+    to_y: usize,
 }
 
 impl Default for CanvasSizeEditWindow {
@@ -33,8 +37,122 @@ impl Default for CanvasSizeEditWindow {
             origin_width: 16,
             origin_height: 16,
             direct: Direction::Center,
+            start_x: 0,
+            start_y: 0,
+            to_x: 0,
+            to_y: 0,
         }
     }
+}
+
+fn compute_start_to_xy(
+    origin_width: usize,
+    origin_height: usize,
+    target_width: usize,
+    target_height: usize,
+    direct: Direction,
+) -> (usize, usize, usize, usize) {
+    let copy_start_x: usize;
+    let copy_start_y: usize;
+
+    let copy_to_x: usize;
+    let copy_to_y: usize;
+
+    fn compute_start_middle_pos(target_width: usize, origin_width: usize) -> usize {
+        if target_width < origin_width {
+            (origin_width - target_width) / 2
+        } else {
+            0
+        }
+    }
+
+    fn compute_start_right_pos(target_width: usize, origin_width: usize) -> usize {
+        if target_width < origin_width {
+            origin_width - target_width
+        } else {
+            0
+        }
+    }
+
+    fn compute_to_middle_pos(target_width: usize, origin_width: usize) -> usize {
+        if target_width < origin_width {
+            0
+        } else {
+            (target_width - origin_width) / 2
+        }
+    }
+
+    fn compute_to_right_pos(target_width: usize, origin_width: usize) -> usize {
+        if target_width < origin_width {
+            0
+        } else {
+            target_width - origin_width
+        }
+    }
+
+    match direct {
+        Direction::LeftTop => {
+            copy_start_x = 0;
+            copy_start_y = 0;
+            copy_to_x = 0;
+            copy_to_y = 0;
+        }
+        Direction::TopMiddle => {
+            copy_start_x = compute_start_middle_pos(target_width, origin_width);
+            copy_start_y = 0;
+            copy_to_x = compute_to_middle_pos(target_width, origin_width);
+            copy_to_y = 0;
+        }
+
+        Direction::RightTop => {
+            copy_start_x = compute_start_right_pos(target_width, origin_width);
+            copy_start_y = 0;
+            copy_to_x = compute_to_right_pos(target_width, origin_width);
+            copy_to_y = 0;
+        }
+        Direction::Left => {
+            copy_start_x = 0;
+            copy_start_y = compute_start_middle_pos(target_height, origin_height);
+            copy_to_x = 0;
+            copy_to_y = compute_to_middle_pos(target_height, origin_height);
+        }
+
+        Direction::Center => {
+            copy_start_x = compute_start_middle_pos(target_width, origin_width);
+            copy_start_y = compute_start_middle_pos(target_height, origin_height);
+            copy_to_x = compute_to_middle_pos(target_width, origin_width);
+            copy_to_y = compute_to_middle_pos(target_height, origin_height);
+        }
+
+        Direction::Right => {
+            copy_start_x = compute_start_right_pos(target_width, origin_width);
+            copy_start_y = compute_start_middle_pos(target_height, origin_height);
+            copy_to_x = compute_to_right_pos(target_width, origin_width);
+            copy_to_y = compute_to_middle_pos(target_height, origin_height);
+        }
+
+        Direction::LeftButtom => {
+            copy_start_x = 0;
+            copy_start_y = compute_start_right_pos(target_height, origin_height);
+            copy_to_x = 0;
+            copy_to_y = compute_to_right_pos(target_height, origin_height);
+        }
+
+        Direction::ButtomMiddle => {
+            copy_start_x = compute_start_middle_pos(target_width, origin_width);
+            copy_start_y = compute_start_right_pos(target_height, origin_height);
+            copy_to_x = compute_to_middle_pos(target_width, origin_width);
+            copy_to_y = compute_to_right_pos(target_height, origin_height);
+        }
+
+        Direction::RightButtom => {
+            copy_start_x = compute_start_right_pos(target_width, origin_width);
+            copy_start_y = compute_start_right_pos(target_height, origin_height);
+            copy_to_x = compute_to_right_pos(target_width, origin_width);
+            copy_to_y = compute_to_right_pos(target_height, origin_height);
+        }
+    };
+    (copy_start_x, copy_start_y, copy_to_x, copy_to_y)
 }
 
 use crate::undo::Command;
@@ -57,6 +175,10 @@ impl CanvasSizeEditWindow {
             .open(&mut self.open)
             .resizable(false)
             .show(ctx, |ui| {
+                ui.heading(t!("size"));
+
+                let width_before_drag = self.width;
+                let height_before_drag = self.height;
                 egui::Grid::new("canvas-size")
                     .striped(true)
                     .num_columns(2)
@@ -64,15 +186,18 @@ impl CanvasSizeEditWindow {
                         ui.label(t!("width"));
                         ui.add(
                             egui::DragValue::new(&mut self.width)
-                                .clamp_range(core::ops::RangeInclusive::new(1, std::usize::MAX)),
+                                .clamp_range(core::ops::RangeInclusive::new(1, std::isize::MAX)),
                         );
                         ui.end_row();
                         ui.label(t!("height"));
                         ui.add(
                             egui::DragValue::new(&mut self.height)
-                                .clamp_range(core::ops::RangeInclusive::new(1, std::usize::MAX)),
+                                .clamp_range(core::ops::RangeInclusive::new(1, std::isize::MAX)),
                         );
                     });
+
+                let origin_direct = self.direct;
+
                 egui::Grid::new("canvas-size-direct")
                     .striped(true)
                     .spacing(egui::Vec2::ZERO)
@@ -93,14 +218,107 @@ impl CanvasSizeEditWindow {
                         ui.selectable_value(&mut self.direct, Direction::ButtomMiddle, "⭣");
                         ui.selectable_value(&mut self.direct, Direction::RightButtom, "⭨");
                     });
+
+                if origin_direct != self.direct
+                    || width_before_drag != self.width
+                    || height_before_drag != self.height
+                {
+                    let (start_x, start_y, to_x, to_y) = compute_start_to_xy(
+                        self.origin_width,
+                        self.origin_height,
+                        self.width,
+                        self.height,
+                        self.direct,
+                    );
+                    self.start_x = start_x;
+                    self.start_y = start_y;
+                    self.to_x = to_x;
+                    self.to_y = to_y;
+                }
+
+                ui.separator();
+                let start_x = self.start_x as isize;
+                let start_y = self.start_y as isize;
+                let to_x = self.to_x as isize;
+                let to_y = self.to_y as isize;
+
+                let border_left_before_drag = to_x - start_x;
+                let border_top_before_drag = to_y - start_y;
+                let border_right_before_drag =
+                    self.width as isize - (border_left_before_drag + self.origin_width as isize);
+                let border_buttom_before_drag =
+                    self.height as isize - (border_top_before_drag + self.origin_height as isize);
+
+                let mut border_left = border_left_before_drag;
+                let mut border_top = border_top_before_drag;
+                let mut border_right = border_right_before_drag;
+                let mut border_buttom = border_buttom_before_drag;
+
+                ui.heading(t!("border"));
+                egui::Grid::new("canvas-size-border")
+                    .striped(true)
+                    .num_columns(4)
+                    .min_col_width(0.0)
+                    .show(ui, |ui| {
+                        ui.label(t!("left"));
+                        ui.add(egui::DragValue::new(&mut border_left));
+                        ui.label(t!("top"));
+                        ui.add(egui::DragValue::new(&mut border_top));
+                        ui.end_row();
+
+                        ui.label(t!("right"));
+                        ui.add(egui::DragValue::new(&mut border_right));
+                        ui.label(t!("buttom"));
+                        ui.add(egui::DragValue::new(&mut border_buttom));
+                    });
+
+                if border_left_before_drag != border_left
+                    || border_top_before_drag != border_left
+                    || border_right_before_drag != border_right
+                    || border_buttom_before_drag != border_buttom
+                {
+                    self.start_x = if border_left > 0 {
+                        0
+                    } else {
+                        (-border_left) as usize
+                    };
+                    self.start_y = if border_top > 0 {
+                        0
+                    } else {
+                        (-border_top) as usize
+                    };
+
+                    self.to_x = if border_left > 0 {
+                        border_left as usize
+                    } else {
+                        0
+                    };
+
+                    self.to_y = if border_top > 0 {
+                        border_top as usize
+                    } else {
+                        0
+                    };
+
+                    let width = border_left + border_right + self.origin_width as isize;
+                    let height = border_top + border_buttom + self.origin_height as isize;
+                    self.width = if width < 0 { 1 } else { width as usize };
+                    self.height = if height < 0 { 1 } else { height as usize };
+                }
+
                 if ui.button("Ok").clicked() {
-                    if self.origin_width != self.width || self.origin_height != self.height {
-                        cmd = Some(Command::ChangeCanvasSize {
-                            width: self.width,
-                            height: self.height,
-                            direct: self.direct,
-                        });
-                    }
+                    cmd = Some(Command::ChangeCanvasSize {
+                        width: self.width,
+                        height: self.height,
+                        start_x: self.start_x,
+                        start_y: self.start_y,
+                        to_x: self.to_x,
+                        to_y: self.to_y,
+                    });
+                    self.start_x = 0;
+                    self.start_y = 0;
+                    self.to_x = 0;
+                    self.to_y = 0;
                     close_windows = true;
                 }
             });
@@ -276,112 +494,19 @@ impl Canvas {
         self.width * self.height
     }
 
-    pub fn change_canvas_size(&mut self, width: usize, height: usize, direct: Direction) {
-        let copy_start_x: usize;
-        let copy_start_y: usize;
-
-        let copy_to_x: usize;
-        let copy_to_y: usize;
-
-        fn compute_start_middle_pos(target_width: usize, origin_width: usize) -> usize {
-            if target_width < origin_width {
-                (origin_width - target_width) / 2
-            } else {
-                0
-            }
-        }
-
-        fn compute_start_right_pos(target_width: usize, origin_width: usize) -> usize {
-            if target_width < origin_width {
-                origin_width - target_width
-            } else {
-                0
-            }
-        }
-
-        fn compute_to_middle_pos(target_width: usize, origin_width: usize) -> usize {
-            if target_width < origin_width {
-                0
-            } else {
-                (target_width - origin_width) / 2
-            }
-        }
-
-        fn compute_to_right_pos(target_width: usize, origin_width: usize) -> usize {
-            if target_width < origin_width {
-                0
-            } else {
-                target_width - origin_width
-            }
-        }
-
-        match direct {
-            Direction::LeftTop => {
-                copy_start_x = 0;
-                copy_start_y = 0;
-                copy_to_x = 0;
-                copy_to_y = 0;
-            }
-            Direction::TopMiddle => {
-                copy_start_x = compute_start_middle_pos(width, self.width);
-                copy_start_y = 0;
-                copy_to_x = compute_to_middle_pos(width, self.width);
-                copy_to_y = 0;
-            }
-
-            Direction::RightTop => {
-                copy_start_x = compute_start_right_pos(width, self.width);
-                copy_start_y = 0;
-                copy_to_x = compute_to_right_pos(width, self.width);
-                copy_to_y = 0;
-            }
-            Direction::Left => {
-                copy_start_x = 0;
-                copy_start_y = compute_start_middle_pos(height, self.height);
-                copy_to_x = 0;
-                copy_to_y = compute_to_middle_pos(height, self.height);
-            }
-
-            Direction::Center => {
-                copy_start_x = compute_start_middle_pos(width, self.width);
-                copy_start_y = compute_start_middle_pos(height, self.height);
-                copy_to_x = compute_to_middle_pos(width, self.width);
-                copy_to_y = compute_to_middle_pos(height, self.height);
-            }
-
-            Direction::Right => {
-                copy_start_x = compute_start_right_pos(width, self.width);
-                copy_start_y = compute_start_middle_pos(height, self.height);
-                copy_to_x = compute_to_right_pos(width, self.width);
-                copy_to_y = compute_to_middle_pos(height, self.height);
-            }
-
-            Direction::LeftButtom => {
-                copy_start_x = 0;
-                copy_start_y = compute_start_right_pos(width, self.height);
-                copy_to_x = 0;
-                copy_to_y = compute_to_right_pos(width, self.height);
-            }
-
-            Direction::ButtomMiddle => {
-                copy_start_x = compute_start_middle_pos(width, self.width);
-                copy_start_y = compute_start_right_pos(width, self.height);
-                copy_to_x = compute_to_middle_pos(width, self.width);
-                copy_to_y = compute_to_right_pos(width, self.height);
-            }
-
-            Direction::RightButtom => {
-                copy_start_x = compute_start_right_pos(width, self.width);
-                copy_start_y = compute_start_right_pos(width, self.height);
-                copy_to_x = compute_to_right_pos(width, self.width);
-                copy_to_y = compute_to_right_pos(width, self.height);
-            }
-        }
-
+    pub fn change_canvas_size(
+        &mut self,
+        width: usize,
+        height: usize,
+        copy_start_x: usize,
+        copy_start_y: usize,
+        copy_to_x: usize,
+        copy_to_y: usize,
+    ) {
         let mut new_canvas = Self::with_size(width, height);
 
-        for y in 0..std::cmp::min(height, self.height) {
-            for x in 0..std::cmp::min(width, self.width) {
+        for y in 0..std::cmp::min(height - copy_to_y, self.height - copy_start_y) {
+            for x in 0..std::cmp::min(width - copy_to_x, self.width - copy_start_x) {
                 *new_canvas.get_cell_mut(copy_to_x + x, copy_to_y + y) =
                     *self.get_cell(copy_start_x + x, copy_start_y + y);
             }

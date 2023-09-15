@@ -1,5 +1,4 @@
 use eframe::egui;
-use crate::canvas::Direction;
 
 #[derive(Clone, PartialEq, Eq)]
 pub enum PointContent {
@@ -13,8 +12,19 @@ pub enum PointContent {
 
 #[derive(Clone, PartialEq, Eq)]
 pub enum Command {
-    Point { c: PointContent, x: usize, y: usize },
-    ChangeCanvasSize{width:usize,height:usize,direct:Direction},
+    Point {
+        c: PointContent,
+        x: usize,
+        y: usize,
+    },
+    ChangeCanvasSize {
+        width: usize,
+        height: usize,
+        start_x: usize,
+        start_y: usize,
+        to_x: usize,
+        to_y: usize,
+    },
 }
 
 impl Default for Command {
@@ -76,10 +86,17 @@ fn excute_painting_command_to_canvas_mut(canvas: &mut Canvas, commands: &[Comman
                         *target_tile = Some(TileState { idx, fc, bc })
                     }
                 }
-            },
-            Command::ChangeCanvasSize { width, height, direct }=>{
-                canvas.change_canvas_size(width,height,direct);
-            },
+            }
+            Command::ChangeCanvasSize {
+                width,
+                height,
+                start_x,
+                start_y,
+                to_x,
+                to_y,
+            } => {
+                canvas.change_canvas_size(width, height, start_x, start_y, to_x, to_y);
+            }
         }
     }
 }

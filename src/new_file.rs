@@ -44,13 +44,13 @@ impl NewFileWinodw {
                         ui.label(t!("width"));
                         ui.add(
                             egui::DragValue::new(&mut self.width)
-                                .clamp_range(core::ops::RangeInclusive::new(1, std::usize::MAX)),
+                                .clamp_range(core::ops::RangeInclusive::new(1, std::isize::MAX)),
                         );
                         ui.end_row();
                         ui.label(t!("height"));
                         ui.add(
                             egui::DragValue::new(&mut self.height)
-                                .clamp_range(core::ops::RangeInclusive::new(1, std::usize::MAX)),
+                                .clamp_range(core::ops::RangeInclusive::new(1, std::isize::MAX)),
                         );
                         ui.end_row();
                         if ui.button(t!("create")).clicked() && self.file_name.len() > 0 {

@@ -330,7 +330,7 @@ impl FakePaint {
                 }
             }
             ui.end_row();
-            ui.label(format!("{}: ", t!("size")));
+            ui.label(format!("{}: ", t!("canvas_size")));
             ui.label(format!(
                 "{}x{}",
                 rendering_canvas.width, rendering_canvas.height
