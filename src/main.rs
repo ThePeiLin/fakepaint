@@ -36,6 +36,7 @@ fn main() -> Result<(), eframe::Error> {
 }
 
 use undo::History;
+
 struct FakePaint {
     tile: TileSet,
     pencil_state: PencilState,
@@ -192,28 +193,47 @@ impl FakePaint {
         y: usize,
         rendering_canvas: &Canvas,
     ) {
+        fn compute_color(c: egui::Color32) -> egui::Color32 {
+            const ADD: u16 = 128;
+            let (r, g, b, _) = c.to_tuple();
+            let r = r as u16;
+            let g = g as u16;
+            let b = b as u16;
+            let r = ((r + ADD) % (u8::MAX as u16)) as u8;
+            let g = ((g + ADD) % (u8::MAX as u16)) as u8;
+            let b = ((b + ADD) % (u8::MAX as u16)) as u8;
+            egui::Color32::from_rgb(r, g, b)
+        }
         let cell = rendering_canvas.get_cell(x, y);
         self.cur_cell = *cell;
         let pencil = &self.pencil_state;
         if let Some((fc, bc)) = pencil.get_fc_bc(cell) {
             self.tile.paint_in_rect(ui, rect, pencil.idx, fc, Some(bc))
         } else {
-            ui.painter()
-                .rect_filled(rect, egui::Rounding::none(), Self::get_gray(x, y))
+            let bc;
+            if let &Some(tile) = cell {
+                bc = tile.bc;
+                self.tile
+                    .paint_in_rect(ui, rect, tile.idx, tile.fc, Some(bc));
+            } else {
+                bc = Self::get_gray(x, y);
+                ui.painter().rect_filled(rect, egui::Rounding::none(), bc)
+            }
+            ui.painter().rect_stroke(
+                rect,
+                egui::Rounding::none(),
+                egui::Stroke::new(1.5, compute_color(bc)),
+            );
         }
     }
 
-    fn draw_canvas(&mut self, ui: &mut egui::Ui, rendering_canvas: &Canvas) {
-        self.cur_cell = None;
-
-        let (rect, res) = ui.allocate_exact_size(
-            egui::vec2(
-                self.rendering_scale * TILE_SIZE * rendering_canvas.width as f32,
-                self.rendering_scale * TILE_SIZE * rendering_canvas.height as f32,
-            ),
-            egui::Sense::drag(),
-        );
-
+    fn draw_canvas(
+        &mut self,
+        ui: &mut egui::Ui,
+        rendering_canvas: &Canvas,
+        render_size: egui::Vec2,
+    ) {
+        let (rect, res) = ui.allocate_exact_size(render_size, egui::Sense::drag());
         let hover_pos = res.hover_pos();
         let cur_tile_size_vec2 = TILE_SIZE_VEC2 * self.rendering_scale;
         if ui.is_rect_visible(rect) {
@@ -266,6 +286,34 @@ impl FakePaint {
                 ));
             }
         }
+    }
+
+    fn draw_canvas_in_scroll_area(&mut self, ui: &mut egui::Ui, rendering_canvas: &Canvas) {
+        self.cur_cell = None;
+
+        let available_size = ui.available_size();
+
+        let mut outer_size = egui::vec2(
+            self.rendering_scale * TILE_SIZE * rendering_canvas.width as f32,
+            self.rendering_scale * TILE_SIZE * rendering_canvas.height as f32,
+        );
+
+        let render_size = outer_size;
+
+        if outer_size.x < available_size.x {
+            outer_size.x = available_size.x * 2.0 - outer_size.x;
+        }
+
+        if outer_size.y < available_size.y {
+            outer_size.y = available_size.y * 2.0 - outer_size.y;
+        }
+
+        let (outer_rect, _) = ui.allocate_exact_size(outer_size, egui::Sense::drag());
+        ui.allocate_ui_at_rect(outer_rect, |ui| {
+            ui.centered_and_justified(|ui| {
+                self.draw_canvas(ui, rendering_canvas, render_size);
+            });
+        });
     }
 
     fn draw_palette(&mut self, ui: &mut egui::Ui) {
@@ -531,9 +579,26 @@ impl eframe::App for FakePaint {
                 ui.separator();
                 use color_editer::ToolEnum;
                 ui.selectable_value(&mut self.pencil_state.tool, ToolEnum::Pencil, t!("pencil"));
+                ui.selectable_value(&mut self.pencil_state.tool, ToolEnum::Eraser, t!("eraser"));
                 ui.selectable_value(&mut self.pencil_state.tool, ToolEnum::Fill, t!("fill"));
+                ui.selectable_value(
+                    &mut self.pencil_state.tool,
+                    ToolEnum::Replace,
+                    t!("replace"),
+                );
             });
 
+        egui::TopBottomPanel::new(egui::panel::TopBottomSide::Bottom, "bottom_panel").show(
+            ctx,
+            |ui| {
+                ui.add(
+                    egui::widgets::Slider::new(&mut self.rendering_scale, 0.125..=8.0)
+                        .logarithmic(true)
+                        .step_by(0.125)
+                        .text(t!("scale")),
+                );
+            },
+        );
         egui::CentralPanel::default().show(ctx, |ui| {
             self.export_image_window
                 .show(ctx, &rendering_canvas, &self.tile);
@@ -546,19 +611,13 @@ impl eframe::App for FakePaint {
             {
                 self.editing_history.clear();
             }
-            self.draw_canvas(ui, &rendering_canvas);
+            egui::ScrollArea::both()
+                .auto_shrink([false, false])
+                .scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::AlwaysVisible)
+                .show(ui, |ui| {
+                    self.draw_canvas_in_scroll_area(ui, &rendering_canvas);
+                });
         });
-        egui::TopBottomPanel::new(egui::panel::TopBottomSide::Bottom, "bottom_panel").show(
-            ctx,
-            |ui| {
-                ui.add(
-                    egui::widgets::Slider::new(&mut self.rendering_scale, 0.125..=8.0)
-                        .logarithmic(true)
-                        .step_by(0.125)
-                        .text(t!("scale")),
-                );
-            },
-        );
     }
 
     fn save(&mut self, storage: &mut dyn eframe::Storage) {

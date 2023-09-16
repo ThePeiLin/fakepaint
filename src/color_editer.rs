@@ -68,6 +68,7 @@ impl Default for Palette {
 use serde::{Deserialize, Serialize};
 #[derive(Serialize, Deserialize)]
 pub struct StoragePen {
+    tool: ToolEnum,
     idx: usize,
     fc: [u8; 3],
     bc: [u8; 3],
@@ -76,6 +77,7 @@ pub struct StoragePen {
 impl Default for StoragePen {
     fn default() -> Self {
         StoragePen {
+            tool: ToolEnum::Pencil,
             idx: 0,
             fc: [255, 255, 255],
             bc: [0, 0, 0],
@@ -83,10 +85,12 @@ impl Default for StoragePen {
     }
 }
 
-#[derive(Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize, Copy)]
 pub enum ToolEnum {
     Pencil,
+    Eraser,
     Fill,
+    Replace,
 }
 pub struct PencilState {
     pub tool: ToolEnum,
@@ -108,11 +112,15 @@ const PALETTE_Y: usize = 4;
 
 impl From<StoragePen> for PencilState {
     fn from(value: StoragePen) -> Self {
-        let mut r = Self::default();
-        r.idx = value.idx;
-        r.fc = egui::Color32::from_rgb(value.fc[0], value.fc[1], value.fc[2]);
-        r.bc = egui::Color32::from_rgb(value.bc[0], value.bc[1], value.bc[2]);
-        r
+        let fc = egui::Color32::from_rgb(value.fc[0], value.fc[1], value.fc[2]);
+        let bc = egui::Color32::from_rgb(value.bc[0], value.bc[1], value.bc[2]);
+        Self {
+            tool: value.tool,
+            idx: value.idx,
+            bc,
+            fc,
+            ..Default::default()
+        }
     }
 }
 
@@ -121,6 +129,7 @@ impl From<&PencilState> for StoragePen {
         let fc = value.fc.to_opaque();
         let bc = value.bc.to_opaque();
         Self {
+            tool: value.tool,
             idx: value.idx,
             fc: [fc.r(), fc.g(), fc.b()],
             bc: [bc.r(), bc.g(), bc.b()],
@@ -133,6 +142,7 @@ impl From<PencilState> for StoragePen {
         let fc = value.fc.to_opaque();
         let bc = value.bc.to_opaque();
         Self {
+            tool: value.tool,
             idx: value.idx,
             fc: [fc.r(), fc.g(), fc.b()],
             bc: [bc.r(), bc.g(), bc.b()],
@@ -323,7 +333,7 @@ impl PencilState {
     }
 
     pub fn get_fc_bc(&self, cell: &Option<TileState>) -> Option<(egui::Color32, egui::Color32)> {
-        if !self.fc_activate && !self.bc_activate {
+        if (!self.fc_activate && !self.bc_activate) || self.tool == ToolEnum::Eraser {
             None
         } else if *cell == None {
             Some((self.fc, self.bc))

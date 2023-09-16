@@ -28,6 +28,11 @@ pub enum Command {
         to_y: usize,
     },
     Fill(FillPos),
+    Replace {
+        x: usize,
+        y: usize,
+        replace_with: Option<TileState>,
+    },
 }
 
 impl Default for Command {
@@ -108,6 +113,12 @@ impl Command {
                 x,
                 y,
             }),
+            ToolEnum::Eraser => Self::Point { c: None, x, y },
+            ToolEnum::Replace => Self::Replace {
+                x,
+                y,
+                replace_with: tile,
+            },
         }
     }
 }
@@ -139,6 +150,14 @@ fn excute_painting_command_to_canvas_mut(canvas: &mut Canvas, commands: &[Comman
                         if need_filled {
                             *canvas.get_cell_mut(x, y) = c;
                         }
+                    }
+                }
+            }
+            Command::Replace { x, y, replace_with } => {
+                let &target_tile = canvas.get_cell(x, y);
+                for cur in canvas.cells.iter_mut() {
+                    if *cur == target_tile {
+                        *cur = replace_with;
                     }
                 }
             }
