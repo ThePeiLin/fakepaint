@@ -43,7 +43,7 @@ struct FakePaint {
     canvas: Canvas,
     rendering_scale: f32,
     editing_history: History,
-    cur_cell: Option<canvas::TileState>,
+    cur_cell: Option<(Option<canvas::TileState>, usize, usize)>,
     editing_file_path: Option<String>,
     new_file_window: new_file::NewFileWinodw,
     export_image_window: export_image::ExportImageWindow,
@@ -205,7 +205,7 @@ impl FakePaint {
             egui::Color32::from_rgb(r, g, b)
         }
         let cell = rendering_canvas.get_cell(x, y);
-        self.cur_cell = *cell;
+        self.cur_cell = Some((*cell, x, y));
         let pencil = &self.pencil_state;
         if let Some((fc, bc)) = pencil.get_fc_bc(cell) {
             self.tile.paint_in_rect(ui, rect, pencil.idx, fc, Some(bc))
@@ -308,7 +308,7 @@ impl FakePaint {
             outer_size.y = available_size.y * 2.0 - outer_size.y;
         }
 
-        let (outer_rect, _) = ui.allocate_exact_size(outer_size, egui::Sense::drag());
+        let (_, outer_rect) = ui.allocate_space(outer_size);
         ui.allocate_ui_at_rect(outer_rect, |ui| {
             ui.centered_and_justified(|ui| {
                 self.draw_canvas(ui, rendering_canvas, render_size);
@@ -408,28 +408,44 @@ impl FakePaint {
                 rendering_canvas.width, rendering_canvas.height
             ));
             ui.end_row();
-            if let Some(cell) = self.cur_cell {
-                ui.label("id：");
-                ui.label(format!("{}", cell.idx));
+
+            fn draw_none_cell(ui: &mut egui::Ui) {
+                ui.label("id: ");
+                ui.label("_");
                 ui.end_row();
                 ui.label(format!("{}: ", t!("foreground_color")));
-                let (r, g, b, _) = cell.fc.to_tuple();
-                ui.label(format!("({:02X}, {:02X}, {:02X})", r, g, b));
+                ui.label("_");
                 ui.end_row();
                 ui.label(format!("{}: ", t!("background_color")));
-                let (r, g, b, _) = cell.bc.to_tuple();
-                ui.label(format!("({:02X}, {:02X}, {:02X})", r, g, b));
+                ui.label("_");
                 ui.end_row();
+            }
+            if let Some((cell, x, y)) = self.cur_cell {
+                ui.label("x,y: ");
+                ui.label(format!("{}, {}", x, y));
+                ui.end_row();
+
+                if let Some(cell) = cell {
+                    ui.label("id: ");
+                    ui.label(format!("{}", cell.idx));
+                    ui.end_row();
+                    ui.label(format!("{}: ", t!("foreground_color")));
+                    let (r, g, b, _) = cell.fc.to_tuple();
+                    ui.label(format!("({:02X}, {:02X}, {:02X})", r, g, b));
+                    ui.end_row();
+                    ui.label(format!("{}: ", t!("background_color")));
+                    let (r, g, b, _) = cell.bc.to_tuple();
+                    ui.label(format!("({:02X}, {:02X}, {:02X})", r, g, b));
+                    ui.end_row();
+                } else {
+                    draw_none_cell(ui);
+                }
             } else {
-                ui.label("id：");
-                ui.label("_");
+                ui.label("x,y: ");
+                ui.label("_, _");
                 ui.end_row();
-                ui.label(format!("{}: ", t!("foreground_color")));
-                ui.label("_");
-                ui.end_row();
-                ui.label(format!("{}: ", t!("background_color")));
-                ui.label("_");
-                ui.end_row();
+
+                draw_none_cell(ui);
             }
         });
     }
