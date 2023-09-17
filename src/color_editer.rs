@@ -91,9 +91,12 @@ pub enum ToolEnum {
     Eraser,
     Fill,
     Replace,
+    RectFilled,
 }
 pub struct PencilState {
     pub tool: ToolEnum,
+    pub start_xy: Option<(usize, usize)>,
+    pub to_xy: Option<(usize, usize)>,
     pub idx: usize,
     pub fc: egui::Color32,
     pub bc: egui::Color32,
@@ -563,6 +566,8 @@ impl Default for PencilState {
     fn default() -> Self {
         Self {
             tool: ToolEnum::Pencil,
+            start_xy: None,
+            to_xy: None,
             idx: 0,
             fc: egui::Color32::WHITE,
             bc: egui::Color32::BLACK,

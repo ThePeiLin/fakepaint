@@ -1,4 +1,4 @@
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct FillPos {
     c: Option<TileState>,
     x: usize,
@@ -12,8 +12,9 @@ impl PartialEq for FillPos {
     }
 }
 
-#[derive(Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Command {
+    None,
     Point {
         c: Option<TileState>,
         x: usize,
@@ -32,6 +33,14 @@ pub enum Command {
         x: usize,
         y: usize,
         replace_with: Option<TileState>,
+    },
+    Rect {
+        c: Option<TileState>,
+        filled: bool,
+        start_x: usize,
+        start_y: usize,
+        to_x: usize,
+        to_y: usize,
     },
 }
 
@@ -119,6 +128,28 @@ impl Command {
                 y,
                 replace_with: tile,
             },
+            ToolEnum::RectFilled => {
+                if pen.start_xy == None || pen.to_xy == None {
+                    Self::None
+                } else {
+                    let (mut start_x, mut start_y) = pen.start_xy.unwrap();
+                    let (mut to_x, mut to_y) = pen.to_xy.unwrap();
+                    if to_x < start_x {
+                        std::mem::swap(&mut start_x, &mut to_x)
+                    }
+                    if to_y < start_y {
+                        std::mem::swap(&mut start_y, &mut to_y)
+                    }
+                    Self::Rect {
+                        c: tile,
+                        filled: true,
+                        start_x,
+                        start_y,
+                        to_x,
+                        to_y,
+                    }
+                }
+            }
         }
     }
 }
@@ -145,8 +176,8 @@ fn excute_painting_command_to_canvas_mut(canvas: &mut Canvas, commands: &[Comman
                 x: _,
                 y: _,
             }) => {
-                for (y, row) in cells.into_iter().enumerate() {
-                    for (x, need_filled) in row.into_iter().enumerate() {
+                for (y, row) in cells.iter().enumerate() {
+                    for (x, &need_filled) in row.iter().enumerate() {
                         if need_filled {
                             *canvas.get_cell_mut(x, y) = c;
                         }
@@ -155,12 +186,40 @@ fn excute_painting_command_to_canvas_mut(canvas: &mut Canvas, commands: &[Comman
             }
             Command::Replace { x, y, replace_with } => {
                 let &target_tile = canvas.get_cell(x, y);
-                for cur in canvas.cells.iter_mut() {
+                canvas.cells.iter_mut().for_each(|cur| {
                     if *cur == target_tile {
                         *cur = replace_with;
                     }
+                });
+            }
+            Command::Rect {
+                c,
+                filled,
+                start_x,
+                start_y,
+                to_x,
+                to_y,
+            } => {
+                if filled {
+                    for y in start_y..=to_y {
+                        for x in start_x..=to_x {
+                            *canvas.get_cell_mut(x, y) = c;
+                        }
+                    }
+                } else {
+                    for y in [start_y, to_y] {
+                        for x in start_x..=to_x {
+                            *canvas.get_cell_mut(x, y) = c;
+                        }
+                    }
+                    for x in [start_x, to_x] {
+                        for y in start_y + 1..to_y {
+                            *canvas.get_cell_mut(x, y) = c;
+                        }
+                    }
                 }
             }
+            Command::None => {}
         }
     }
 }
@@ -229,7 +288,7 @@ impl History {
 
     pub fn push(&mut self, command: Command) {
         let last = self.edit_history.last();
-        if last == None || *last.unwrap() != command {
+        if last == None || (command != Command::None && *last.unwrap() != command) {
             self.edit_history.push(command);
             self.clear_undo();
         }

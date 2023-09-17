@@ -37,6 +37,8 @@ fn main() -> Result<(), eframe::Error> {
 
 use undo::History;
 
+use color_editer::ToolEnum;
+
 struct FakePaint {
     tile: TileSet,
     pencil_state: PencilState,
@@ -71,11 +73,16 @@ fn get_grid_x_y(rect: egui::Rect, pos: egui::Pos2, size: egui::Vec2) -> (usize, 
     (x.floor() as usize, y.floor() as usize)
 }
 
-fn compute_grid_rect(rect: egui::Rect, grid_size: egui::Vec2, x: usize, y: usize) -> egui::Rect {
+fn compute_grid_rect(
+    left_top: egui::Pos2,
+    grid_size: egui::Vec2,
+    x: usize,
+    y: usize,
+) -> egui::Rect {
     let egui::Pos2 {
         x: left_top_x,
         y: left_top_y,
-    } = rect.left_top();
+    } = left_top;
     egui::Rect::from_min_size(
         egui::pos2(
             (left_top_x + grid_size.x * x as f32).floor(),
@@ -188,6 +195,7 @@ impl FakePaint {
     fn draw_nib(
         &mut self,
         ui: &mut egui::Ui,
+        start_pos: egui::Pos2,
         rect: egui::Rect,
         x: usize,
         y: usize,
@@ -208,7 +216,26 @@ impl FakePaint {
         self.cur_cell = Some((*cell, x, y));
         let pencil = &self.pencil_state;
         if let Some((fc, bc)) = pencil.get_fc_bc(cell) {
-            self.tile.paint_in_rect(ui, rect, pencil.idx, fc, Some(bc))
+            if pencil.tool == ToolEnum::RectFilled && pencil.start_xy != None {
+                let cur_tile_size_vec2 = rect.size();
+                let (mut start_x, mut start_y) = pencil.start_xy.unwrap();
+                let mut to_x = x;
+                let mut to_y = y;
+                if to_x < start_x {
+                    std::mem::swap(&mut start_x, &mut to_x)
+                }
+                if to_y < start_y {
+                    std::mem::swap(&mut start_y, &mut to_y)
+                }
+                for y in start_y..=to_y {
+                    for x in start_x..=to_x {
+                        let rect = compute_grid_rect(start_pos, cur_tile_size_vec2, x, y);
+                        self.tile.paint_in_rect(ui, rect, pencil.idx, fc, Some(bc));
+                    }
+                }
+            } else {
+                self.tile.paint_in_rect(ui, rect, pencil.idx, fc, Some(bc))
+            }
         } else {
             let bc;
             if let &Some(tile) = cell {
@@ -219,11 +246,14 @@ impl FakePaint {
                 bc = Self::get_gray(x, y);
                 ui.painter().rect_filled(rect, egui::Rounding::none(), bc)
             }
-            ui.painter().rect_stroke(
-                rect,
-                egui::Rounding::none(),
-                egui::Stroke::new(1.5, compute_color(bc)),
-            );
+            if pencil.tool == ToolEnum::RectFilled && pencil.start_xy != None {
+            } else {
+                ui.painter().rect_stroke(
+                    rect,
+                    egui::Rounding::none(),
+                    egui::Stroke::new(1.5, compute_color(bc)),
+                );
+            }
         }
     }
 
@@ -236,15 +266,18 @@ impl FakePaint {
         let (rect, res) = ui.allocate_exact_size(render_size, egui::Sense::drag());
         let hover_pos = res.hover_pos();
         let cur_tile_size_vec2 = TILE_SIZE_VEC2 * self.rendering_scale;
+        let mut hover_xy: Option<(usize, usize, egui::Rect)> = None;
         if ui.is_rect_visible(rect) {
+            let left_top = rect.left_top();
             for y in 0..rendering_canvas.height {
                 for x in 0..rendering_canvas.width {
-                    let rect = compute_grid_rect(rect, cur_tile_size_vec2, x, y);
+                    let rect = compute_grid_rect(left_top, cur_tile_size_vec2, x, y);
                     let cell = rendering_canvas.get_cell(x, y);
 
                     if hover_pos != None && rect.contains(hover_pos.unwrap()) {
-                        self.draw_nib(ui, rect, x, y, &rendering_canvas);
-                    } else if let Some(c) = cell {
+                        hover_xy = Some((x, y, rect));
+                    }
+                    if let Some(c) = cell {
                         let idx = c.idx;
                         let bc = c.bc;
                         let fc = c.fc;
@@ -258,32 +291,52 @@ impl FakePaint {
                     }
                 }
             }
+            if let Some((x, y, rect)) = hover_xy {
+                self.draw_nib(ui, left_top, rect, x, y, &rendering_canvas);
+            }
         }
 
-        if res.hovered() && res.dragged() && hover_pos != None && rect.contains(hover_pos.unwrap())
-        {
-            use undo::Command;
+        use undo::Command;
+        if res.hovered() && hover_pos != None && rect.contains(hover_pos.unwrap()) {
             let (x, y) = get_grid_x_y(rect, hover_pos.unwrap(), cur_tile_size_vec2);
-            let ctx = ui.ctx();
             let cell_ref = rendering_canvas.get_cell(x, y);
-            if ctx.input(|i| i.pointer.primary_down()) {
-                self.editing_history.push(Command::new(
-                    x,
-                    y,
-                    &self.pencil_state,
-                    cell_ref,
-                    false,
-                    rendering_canvas,
-                ));
-            } else if ctx.input(|i| i.pointer.secondary_down()) {
-                self.editing_history.push(Command::new(
-                    x,
-                    y,
-                    &self.pencil_state,
-                    cell_ref,
-                    true,
-                    rendering_canvas,
-                ));
+            if self.pencil_state.tool == ToolEnum::RectFilled {
+                if res.drag_started() {
+                    self.pencil_state.start_xy = Some((x, y));
+                } else if res.drag_released() {
+                    self.pencil_state.to_xy = Some((x, y));
+                    self.editing_history.push(Command::new(
+                        x,
+                        y,
+                        &self.pencil_state,
+                        cell_ref,
+                        false,
+                        rendering_canvas,
+                    ));
+                    self.pencil_state.start_xy = None;
+                    self.pencil_state.to_xy = None;
+                }
+            } else {
+                let ctx = ui.ctx();
+                if ctx.input(|i| i.pointer.primary_down()) {
+                    self.editing_history.push(Command::new(
+                        x,
+                        y,
+                        &self.pencil_state,
+                        cell_ref,
+                        false,
+                        rendering_canvas,
+                    ));
+                } else if ctx.input(|i| i.pointer.secondary_down()) {
+                    self.editing_history.push(Command::new(
+                        x,
+                        y,
+                        &self.pencil_state,
+                        cell_ref,
+                        true,
+                        rendering_canvas,
+                    ));
+                }
             }
         }
     }
@@ -593,7 +646,6 @@ impl eframe::App for FakePaint {
             .show(ctx, |ui| {
                 ui.heading(t!("tool"));
                 ui.separator();
-                use color_editer::ToolEnum;
                 ui.selectable_value(&mut self.pencil_state.tool, ToolEnum::Pencil, t!("pencil"));
                 ui.selectable_value(&mut self.pencil_state.tool, ToolEnum::Eraser, t!("eraser"));
                 ui.selectable_value(&mut self.pencil_state.tool, ToolEnum::Fill, t!("fill"));
@@ -601,6 +653,11 @@ impl eframe::App for FakePaint {
                     &mut self.pencil_state.tool,
                     ToolEnum::Replace,
                     t!("replace"),
+                );
+                ui.selectable_value(
+                    &mut self.pencil_state.tool,
+                    ToolEnum::RectFilled,
+                    t!("rect_filled"),
                 );
             });
 
